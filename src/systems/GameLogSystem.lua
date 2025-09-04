@@ -33,6 +33,10 @@ function GameLogSystem.logMessage(text, colorKey)
     MessageLog.add(text, colorKey or "default")
 end
 
+function GameLogSystem.logOnCooldown(abilityName, turnsLeft)
+    MessageLog.add(abilityName .. " is on cooldown (" .. turnsLeft .. " turns left).", "info")
+end
+
 -- Item Interaction Messages
 function GameLogSystem.logItemPickup(item)
     MessageLog.add("You pick up the " .. item.name .. ".", "player_attack")

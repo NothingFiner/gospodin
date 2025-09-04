@@ -3,6 +3,16 @@
 
 local constants = {}
 
+constants.ItemType = {
+    CONSUMABLE = "consumable",
+    EQUIPMENT = "equipment"
+}
+
+constants.EquipmentSlot = {
+    IMPLANT = "implant", HEAD = "head", CHEST = "chest", HANDS = "hands",
+    LEGS = "legs", FEET = "feet", WEAPON1 = "weapon1", WEAPON2 = "weapon2"
+}
+
 constants.WeaponType = {
     NANITE_CLOUD_ARRAY = "Nanite Cloud Array",
     TYPE_77 = "Type 77",

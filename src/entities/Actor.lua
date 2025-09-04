@@ -135,11 +135,13 @@ function Actor:resetActionPoints()
 end
 
 function Actor:useItem(item)
-    if item.itemData.effect.type == C.ItemEffect.HEAL then
-        self.health = math.min(self.maxHealth, self.health + item.itemData.effect.amount)
-        local effectText = "recovering " .. item.itemData.effect.amount .. " health."
-        GameLogSystem.logItemUsed(item.name, effectText)
-        return true
+    local Consumable = require('src.entities.Consumable')
+
+    -- Generic actors (like enemies) can only use consumables.
+    -- Player-specific actions like equipping are handled in the Player class.
+    if is_a(item, Consumable) then
+        -- The item's use() method returns true on success
+        return item:use(self)
     end
     return false
 end

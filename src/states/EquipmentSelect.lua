@@ -81,12 +81,31 @@ function EquipmentSelectState:draw()
     love.graphics.setFont(Assets.fonts.hostGroteskRegular)
     local textY = panelY + 40
     love.graphics.printf(selectedLoadout.description, panelX + 20, textY, panelWidth - 40, "center")
-    textY = textY + 180
-    local weaponText = string.format("Weapon: %s (Damage: %d, Range: %d, AP: %d)", selectedLoadout.weapon.name, selectedLoadout.weapon.damage, selectedLoadout.weapon.range, selectedLoadout.weapon.apCost)
-    love.graphics.printf(weaponText, panelX, textY, panelWidth, "center")
-    textY = textY + 40
-    local statsText = string.format("Health: %d, Action Points: %d", selectedLoadout.health, selectedLoadout.actionPoints)
-    love.graphics.printf(statsText, panelX, textY, panelWidth, "center")
+    textY = textY + 100
+
+    -- Get the actual item data from the loadout key
+    local itemKey = selectedLoadout.implant or selectedLoadout.weapon
+    local itemData = config.items[itemKey]
+
+    if itemData and itemData.modifiers then
+        local modifiers = itemData.modifiers
+        love.graphics.printf("--- Item Modifiers ---", panelX, textY, panelWidth, "center")
+        textY = textY + 30
+
+        if modifiers.weapon then
+            local weapon = modifiers.weapon
+            local weaponText = string.format("Grants Weapon: %s (Damage: %d, Range: %d, AP: %d)", weapon.name, weapon.damage, weapon.range, weapon.apCost)
+            love.graphics.printf(weaponText, panelX, textY, panelWidth, "center")
+            textY = textY + 20
+        end
+
+        local statsText = ""
+        if modifiers.health then statsText = statsText .. "Health: +" .. modifiers.health .. "  " end
+        if modifiers.actionPoints then statsText = statsText .. "AP: +" .. modifiers.actionPoints .. "  " end
+        if modifiers.dodge then statsText = statsText .. "Dodge: " .. (modifiers.dodge > 0 and "+" or "") .. modifiers.dodge .. "  " end
+        if modifiers.armor then statsText = statsText .. "Armor: " .. (modifiers.armor > 0 and "+" or "") .. modifiers.armor .. "  " end
+        love.graphics.printf(statsText, panelX, textY, panelWidth, "center")
+    end
 
     -- --- Instructions ---
     love.graphics.setColor(0.8, 0.8, 0.8)

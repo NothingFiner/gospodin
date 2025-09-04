@@ -5,23 +5,28 @@ local config = require('src.config')
 local MessageLog = require('src.ui.MessageLog')
 
 local GameUI = {}
+-- Make slotOrder accessible to PlayingState
+local C = require('src.constants')
+GameUI.slotOrder = {C.EquipmentSlot.IMPLANT, C.EquipmentSlot.HEAD, C.EquipmentSlot.CHEST, C.EquipmentSlot.HANDS, C.EquipmentSlot.LEGS, C.EquipmentSlot.FEET, C.EquipmentSlot.WEAPON1, C.EquipmentSlot.WEAPON2}
+
 
 function GameUI.draw(playingState)
     -- Define layout regions
     local screenW, screenH = love.graphics.getWidth(), love.graphics.getHeight()
-    local statsPanelW = screenW * 0.2
-    local commandPanelH = screenH * 0.1
+    local statsPanelW = screenW * 0.25 -- Reverted to original width
+    local commandPanelH = screenH * 0.05 -- Reverted to original height
     local mapX = statsPanelW
     local mapW = screenW - statsPanelW
     local mapH = screenH - commandPanelH
     local padding = 10
 
-    -- Draw stats text in the left panel
+    -- Draw left panel content
     if Game.player then
         local textX = padding
         local currentY = padding
         local textWidth = statsPanelW - padding * 2
 
+        -- Draw Stats
         love.graphics.setColor(1, 1, 1)
         love.graphics.printf("Health: " .. Game.player.health .. "/" .. Game.player.maxHealth, textX, currentY, textWidth, "left")
         currentY = currentY + 20
@@ -41,89 +46,194 @@ function GameUI.draw(playingState)
         currentY = currentY + 20
         love.graphics.printf("INT: " .. Game.player.intelligence, textX, currentY, textWidth, "left")
         currentY = currentY + 40
-        
-        local currentEntity = Game.getCurrentEntity()
-        if currentEntity then
-            local turnText = currentEntity.isPlayer and "Your Turn" or (currentEntity.name .. "'s Turn")
-            love.graphics.printf("Turn: " .. turnText, textX, currentY, textWidth, "left")
-            currentY = currentY + 20
+
+        -- Display active weapon
+        local activeWeapon = Game.player.equipment[Game.player.activeWeaponSlot]
+        local weaponName = activeWeapon and activeWeapon.name or "Unarmed"
+        love.graphics.printf("Weapon: " .. weaponName, textX, currentY, textWidth, "left")
+        currentY = currentY + 40
+
+        -- Draw Message Log in left panel
+        love.graphics.setColor(0.8, 0.8, 0.8)
+        love.graphics.printf("--- Log ---", textX, currentY, textWidth, "left")
+        currentY = currentY + 20
+        local maxLogLines = math.floor((screenH - currentY - commandPanelH - padding) / 15)
+        local messages = MessageLog.getMessages()
+        for i = 1, math.min(maxLogLines, #messages) do
+            local msg = messages[i]
+            love.graphics.setColor(msg.color)
+            love.graphics.printf(msg.text, textX, currentY, textWidth, "left")
+            currentY = currentY + 15 -- Move down for the next message
         end
-        
-        if Game.player.weapon then
-            love.graphics.printf("Weapon: " .. Game.player.weapon.name, textX, currentY, textWidth, "left")
-        end
-    end
-    
-    -- Draw bottom panel content
-    local logWidth = mapW * 0.6 -- 60% of the bottom panel for the log
-    
-    -- Draw Message Log
-    love.graphics.setColor(1, 1, 1)
-    local maxLogLines = math.floor((commandPanelH - padding * 2) / 15)
-    local messages = MessageLog.getMessages()
-    local logY = mapH + padding
-    for i = 1, math.min(maxLogLines, #messages) do
-        local msg = messages[i]
-        love.graphics.setColor(msg.color)
-        love.graphics.printf(msg.text, mapX + padding, logY, logWidth - padding * 2)
-        logY = logY + 15 -- Move down for the next message
-    end
-    -- Draw scroll indicator if needed
-    if #MessageLog.messages > maxLogLines then
-        love.graphics.setColor(0.7, 0.7, 0.7)
-        love.graphics.printf("[Up/Down to scroll]", mapX + logWidth - 200, screenH - 20, 200, "left")
     end
 
-    -- Draw context-sensitive info on the right side of the bottom panel
-    local infoX = mapX + logWidth
-    local infoWidth = mapW - logWidth - padding
+    -- Draw bottom panel content (Ability Bar)
+    local abilityBarX = mapX + padding
+    local abilityBarY = mapH + padding / 2
+    local abilityBarW = mapW - padding * 2
 
-    if playingState and playingState.targetingMode then
+    love.graphics.setColor(0.7, 0.7, 0.7)
+    love.graphics.printf("(I)nventory | (K)eymap", abilityBarX, abilityBarY, abilityBarW, "left")
+
+    if playingState.targetingMode then
         -- Targeting mode info
-        local cursor = playingState.cursor
-        local infoText = "Examining (" .. cursor.x .. ", " .. cursor.y .. ")"
-        if Game.fovMap[cursor.y] and Game.fovMap[cursor.y][cursor.x] then
-            local targetEntity = Game.getEntityAt(cursor.x, cursor.y)
-            if targetEntity then
-                infoText = infoText .. "\nYou see a " .. targetEntity.name .. "."
-                infoText = infoText .. string.format("\nHealth: %d/%d", targetEntity.health, targetEntity.maxHealth)
-            else
-                infoText = infoText .. "\nYou see an empty space."
-            end
-        else
-            infoText = infoText .. "\nYou can't see that tile."
+        local ability = Game.player.abilities[Game.player.selectedAbilityIndex]
+        local prompt = "Select target. (F) or (ENTER) to use, (ESC) to cancel."
+        if ability and ability.targeting == "multi_enemy" then
+            prompt = "Select targets. (F) or (ENTER) to confirm, (ESC) to cancel."
         end
-        love.graphics.setColor(1, 1, 0.8)
-        love.graphics.printf(infoText, infoX, mapH + padding, infoWidth, "left")
+        love.graphics.printf(prompt, abilityBarX, abilityBarY, abilityBarW, "center")
     else
-        -- Normal mode controls
-        love.graphics.setColor(0.7, 0.7, 0.7)
-        love.graphics.printf("WASD: Move/Attack\n(G)et, (U)se Item\n(L)ook, (F)ire\nSPACE: Wait\nUp/Down: Scroll Log", infoX, mapH + padding, infoWidth, "center")
+        -- Default ability bar
+        local ability = Game.player.abilities[Game.player.selectedAbilityIndex]
+        if ability then
+            local abilityText = ability.name
+            local cooldown = Game.player.abilityCooldowns[ability.key]
+            if cooldown and cooldown > 0 then
+                abilityText = string.format("%s [CD: %d]", ability.name, cooldown)
+            end
+            love.graphics.printf(abilityText, abilityBarX, abilityBarY, abilityBarW, "center")
+            love.graphics.printf("(F) Use Ability | (V) Next Ability", abilityBarX, abilityBarY, abilityBarW, "right")
+        else
+            love.graphics.printf("No abilities available.", abilityBarX, abilityaBarY, abilityBarW, "center")
+        end
     end
 end
 
 function GameUI.drawInventory(playingState)
     local screenW, screenH = love.graphics.getWidth(), love.graphics.getHeight()
-    local currentY = 100
+    local panelW, panelH = screenW * 0.6, screenH * 0.7
+    local panelX, panelY = (screenW - panelW) / 2, (screenH - panelH) / 2
 
-    if #Game.player.inventory == 0 then
-        love.graphics.printf("Your inventory is empty.", 0, currentY, screenW, "center")
+    -- Draw main panel background
+    love.graphics.setColor(0.1, 0.1, 0.15, 0.9)
+    love.graphics.rectangle("fill", panelX, panelY, panelW, panelH)
+    love.graphics.setColor(0.8, 0.8, 0.9)
+    love.graphics.setLineWidth(2)
+    love.graphics.rectangle("line", panelX, panelY, panelW, panelH)
+
+    -- Draw tabs
+    local tabW = panelW / 2
+    -- Inventory Tab
+    love.graphics.setColor(playingState.inventoryTab == "inventory" and {0.3, 0.3, 0.4} or {0.1, 0.1, 0.15})
+    love.graphics.rectangle("fill", panelX, panelY, tabW, 40)
+    love.graphics.setColor(1,1,1)
+    love.graphics.printf("Inventory", panelX, panelY + 10, tabW, "center")
+    -- Equipment Tab
+    love.graphics.setColor(playingState.inventoryTab == "equipment" and {0.3, 0.3, 0.4} or {0.1, 0.1, 0.15})
+    love.graphics.rectangle("fill", panelX + tabW, panelY, tabW, 40)
+    love.graphics.setColor(1,1,1)
+    love.graphics.printf("Equipment", panelX + tabW, panelY + 10, tabW, "center")
+
+    -- Draw content
+    local listX, listY = panelX + 20, panelY + 60
+    local listW = panelW - 40
+    local selectedItem = nil
+
+    if playingState.inventoryTab == "inventory" then
+        if #Game.player.inventory == 0 then
+            love.graphics.printf("Your inventory is empty.", listX, listY, listW, "left")
+        else
+            for i, item in ipairs(Game.player.inventory) do
+                local text = string.format("%s", item.name)
+                if i == playingState.selectedItemIndex then
+                    love.graphics.setColor(1, 1, 0)
+                    love.graphics.printf("> " .. text, listX, listY, listW, "left")
+                    selectedItem = item
+                else
+                    love.graphics.setColor(0.8, 0.8, 0.8)
+                    love.graphics.printf("  " .. text, listX, listY, listW, "left")
+                end
+                listY = listY + 20
+            end
+        end
     else
-        for i, item in ipairs(Game.player.inventory) do
-            local text = string.format("%d. %s", i, item.name)
+        -- Equipment Tab
+        for i, slot in ipairs(GameUI.slotOrder) do
+            local item = Game.player.equipment[slot]
+            local text = string.format("%s: %s", slot, item and item.name or "empty")
             if i == playingState.selectedItemIndex then
                 love.graphics.setColor(1, 1, 0)
-                love.graphics.printf("> " .. text, 0, currentY, screenW, "center")
+                love.graphics.printf("> " .. text, listX, listY, listW, "left")
+                selectedItem = item
             else
                 love.graphics.setColor(0.8, 0.8, 0.8)
-                love.graphics.printf(text, 0, currentY, screenW, "center")
+                love.graphics.printf("  " .. text, listX, listY, listW, "left")
             end
-            currentY = currentY + 20
+            listY = listY + 20
         end
     end
 
+    -- Draw item stats/comparison panel
+    local statsX, statsY = panelX + panelW * 0.5, panelY + 60
+    local statsW = panelW * 0.5 - 20
+    if selectedItem then
+        love.graphics.setColor(1,1,1)
+        love.graphics.printf("--- " .. selectedItem.name .. " ---", statsX, statsY, statsW, "left")
+        statsY = statsY + 30
+        for stat, value in pairs(selectedItem.modifiers) do
+            local text = ""
+            if type(value) == "number" then
+                text = string.format("%s: %s%d", stat, value > 0 and "+" or "", value)
+            elseif type(value) == "table" and value.name then -- Weapon
+                text = string.format("Grants: %s", value.name)
+            elseif type(value) == "table" and value.min then -- Damage
+                text = string.format("Damage: +%dd%d", value.min, value.max)
+            end
+            love.graphics.printf(text, statsX, statsY, statsW, "left")
+            statsY = statsY + 15
+        end
+
+        -- Comparison logic
+        local equippedItem = Game.player.equipment[selectedItem.slot]
+        if playingState.inventoryTab == "inventory" and equippedItem then
+            statsY = statsY + 30
+            love.graphics.setColor(0.8, 0.8, 0.8)
+            love.graphics.printf("--- Equipped: " .. equippedItem.name .. " ---", statsX, statsY, statsW, "left")
+            statsY = statsY + 30
+            for stat, value in pairs(equippedItem.modifiers) do
+                -- (Simplified display for comparison)
+                love.graphics.printf(string.format("%s: ...", stat), statsX, statsY, statsW, "left")
+                statsY = statsY + 15
+            end
+        end
+    end
+
+    -- Instructions
     love.graphics.setColor(0.7, 0.7, 0.7)
-    love.graphics.printf("W/S to navigate, ENTER to use, ESC to close.", 0, screenH - 100, screenW, "center")
+    love.graphics.printf("W/S: Nav, TAB: Switch, ENTER: Use/Equip/Unequip, ESC: Close", panelX, panelY + panelH + 10, panelW, "center")
+end
+
+function GameUI.drawKeymap()
+    local screenW, screenH = love.graphics.getWidth(), love.graphics.getHeight()
+    local panelW, panelH = screenW * 0.4, screenH * 0.5
+    local panelX, panelY = (screenW - panelW) / 2, (screenH - panelH) / 2
+
+    -- Draw panel background
+    love.graphics.setColor(0.1, 0.1, 0.15, 0.95)
+    love.graphics.rectangle("fill", panelX, panelY, panelW, panelH)
+    love.graphics.setColor(0.8, 0.8, 0.9)
+    love.graphics.setLineWidth(2)
+    love.graphics.rectangle("line", panelX, panelY, panelW, panelH)
+
+    -- Title and text
+    love.graphics.setColor(1,1,1)
+    love.graphics.printf("Keymap", panelX, panelY + 20, panelW, "center")
+    local textX = panelX + 30
+    local textY = panelY + 60
+    local keymapText = [[
+WASD: Move / Bump Attack
+I: Open Inventory
+G: Get Item
+F: Use Selected Ability
+V: Cycle to Next Ability
+Q: Switch Active Weapon
+L: Look / Examine
+SPACE: Wait (ends turn)
+UP/DOWN: Scroll Message Log
+ESC: Close Menu / Open Pause Menu
+    ]]
+    love.graphics.printf(keymapText, textX, textY, panelW - 60, "left")
 end
 
 function GameUI.drawPauseMenu(playingState)

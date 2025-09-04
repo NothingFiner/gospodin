@@ -15,14 +15,16 @@ local PlayingState = {}
 function PlayingState:new(changeState)
     local state = {
         changeState = changeState,
-        targetingMode = false,
-        isFiring = false,
+        targetingMode = false, -- Generic targeting mode
+        isUsingAbility = false, -- Specific flag for when targeting is for an ability
         inventoryMode = false,
         selectedItemIndex = 1,
         cursor = {x = 0, y = 0},
+        showKeymap = false,
         fadingMusic = false,
         musicFadeDuration = 1.5, -- seconds
         multiTargetData = nil, -- Will hold data for multi-targeting
+        inventoryTab = "inventory", -- "inventory" or "equipment"
         isPaused = false,
         selectedPauseOption = 1,
         aiTurnDelay = 0.2, -- Delay in seconds before an AI acts
@@ -35,9 +37,9 @@ function PlayingState:new(changeState)
     return state
 end
 
-function PlayingState:startTargeting(isFiring)
+function PlayingState:startTargeting(isForAbility)
     self.targetingMode = true
-    self.isFiring = isFiring or false
+    self.isUsingAbility = isForAbility or false
     self.cursor.x = Game.player.x
     self.cursor.y = Game.player.y
 end
@@ -52,47 +54,6 @@ function PlayingState:enter()
     -- Start fading out the menu music instead of stopping it abruptly
     if Assets.music.theme and Assets.music.theme:isPlaying() then
         self.fadingMusic = true
-    end
-end
-
-function PlayingState:update(dt)
-    -- Handle music fade-out
-    if self.fadingMusic then
-        local currentVolume = Assets.music.theme:getVolume()
-        local fadeSpeed = (0.5 / self.musicFadeDuration) * dt -- Start volume is 0.5
-        local newVolume = math.max(0, currentVolume - fadeSpeed)
-        Assets.music.theme:setVolume(newVolume)
-
-        if newVolume == 0 then
-            love.audio.stop(Assets.music.theme)
-            self.fadingMusic = false
-        end
-    end
-
-    local victory = false
-    for i = #Game.turnQueue, 1, -1 do
-        local entity = Game.turnQueue[i]
-        if entity.health <= 0 then
-            if entity.type == "alien_patriarch" then
-                victory = true
-            end
-            table.remove(Game.turnQueue, i)
-            if Game.currentTurnIndex > i then
-                Game.currentTurnIndex = Game.currentTurnIndex - 1
-            elseif Game.currentTurnIndex > #Game.turnQueue then
-                Game.currentTurnIndex = 1
-            end
-        end
-    end
-
-    if victory then
-        self.changeState(config.GameState.VICTORY)
-        return
-    end
-    
-    -- Make sure we have a valid current turn index
-    if #Game.turnQueue > 0 and Game.currentTurnIndex > #Game.turnQueue then
-        Game.currentTurnIndex = 1
     end
 end
 
@@ -115,8 +76,8 @@ function PlayingState:draw()
 
     -- Define layout regions
     local screenW, screenH = love.graphics.getWidth(), love.graphics.getHeight()
-    local statsPanelW = screenW * 0.2
-    local commandPanelH = screenH * 0.15 -- Increased by 50% from 0.1
+    local statsPanelW = screenW * 0.375 -- 50% wider than 0.25
+    local commandPanelH = screenH * 0.0125 -- 25% of the previous 0.05 height
     local mapX, mapY = statsPanelW, 0
     local mapW, mapH = screenW - statsPanelW, screenH - commandPanelH
     -- Store these on Game for the lighting system to access
@@ -206,14 +167,18 @@ function PlayingState:draw()
 
 	-- Draw targeting cursor and line
     if self.targetingMode then
-        local cursorColor = {1, 1, 0} -- Default yellow for 'look' mode
-        if self.isFiring then
+        local cursorColor = {1, 1, 0} -- Default yellow for 'look'
+        if self.isUsingAbility then
+            local ability = Game.player.abilities[Game.player.selectedAbilityIndex]
             local dist = math.sqrt((self.cursor.x - Game.player.x)^2 + (self.cursor.y - Game.player.y)^2)
             local targetEntity = Game.getEntityAt(self.cursor.x, self.cursor.y)
             local hasLOS = Game.fovMap[self.cursor.y] and Game.fovMap[self.cursor.y][self.cursor.x]
+            local map = Game.floors[Game.currentFloor].map
+            local tile = map[self.cursor.y] and map[self.cursor.y][self.cursor.x]
+            local isWall = tile == 0
 
-            if dist > Game.player.weapon.range or not targetEntity or targetEntity.isPlayer or not hasLOS then
-                cursorColor = {1, 0.2, 0.2} -- Red for invalid target (out of range, no target, no LoS)
+            if not ability or dist > ability.range or not hasLOS or isWall then
+                cursorColor = {1, 0.2, 0.2} -- Red for invalid target (out of range, no LoS, or wall)
             else
                 cursorColor = {0.2, 1, 0.2} -- Green for valid target
             end
@@ -262,7 +227,10 @@ function PlayingState:draw()
     -- Draw panel borders
     love.graphics.setColor(0.4, 0.4, 0.4)
     love.graphics.setLineWidth(2)
-    love.graphics.rectangle("line", mapX, mapY, mapW, mapH)
+    -- Vertical line
+    love.graphics.line(mapX, mapY, mapX, screenH)
+    -- Horizontal line
+    love.graphics.line(mapX, mapH, screenW, mapH)
 
     -- Draw UI text content
     GameUI.draw(self)
@@ -270,6 +238,11 @@ function PlayingState:draw()
     -- Draw pause menu overlay if the game is paused
     if self.isPaused then
         GameUI.drawPauseMenu(self)
+    end
+
+    -- Draw keymap overlay
+    if self.showKeymap then
+        GameUI.drawKeymap()
     end
 end
 
@@ -327,9 +300,11 @@ function PlayingState:keypressed(key)
     if key == "escape" then
         if self.inventoryMode then
             self.inventoryMode = false
+        elseif self.showKeymap then
+            self.showKeymap = false
         elseif self.targetingMode then
             self.targetingMode = false
-            self.isFiring = false
+            self.isUsingAbility = false
             self.multiTargetData = nil -- Cancel multi-targeting
         elseif self.isPaused then
             self.isPaused = false
@@ -360,15 +335,17 @@ function PlayingState:keypressed(key)
         local newCursorX, newCursorY = self.cursor.x, self.cursor.y
         if key == 'w' then newCursorY = newCursorY - 1
         elseif key == 's' then newCursorY = newCursorY + 1
+        elseif key == 's' then newCursorY = newCursorY + 1
         elseif key == 'a' then newCursorX = newCursorX - 1
         elseif key == 'd' then newCursorX = newCursorX + 1
         end
 
         if newCursorX ~= self.cursor.x or newCursorY ~= self.cursor.y then
-            if self.isFiring then
+            if self.isUsingAbility then
                 -- Constrain cursor to weapon range when firing
+                local ability = Game.player.abilities[Game.player.selectedAbilityIndex]
                 local dist = math.sqrt((newCursorX - Game.player.x)^2 + (newCursorY - Game.player.y)^2)
-                if dist <= Game.player.weapon.range then
+                if dist <= ability.range then
                     self.cursor.x = newCursorX
                     self.cursor.y = newCursorY
                 end
@@ -377,45 +354,48 @@ function PlayingState:keypressed(key)
                 self.cursor.x = newCursorX
                 self.cursor.y = newCursorY
             end
-        elseif key == 'return' or (self.isFiring and key == 'f') then
+        elseif key == 'return' or (self.isUsingAbility and key == 'f') then
             local tookAction = false
-            if self.isFiring then
+            if self.isUsingAbility then
+                local ability = Game.player.abilities[Game.player.selectedAbilityIndex]
                 if self.multiTargetData then
                     -- This is the 2nd, 3rd, etc. target selection
                     self:selectMultiTarget()
                     return -- Don't end turn yet
                 end
 
-                local targetX, targetY = self.cursor.x, self.cursor.y
-                local targetEntity = Game.getEntityAt(targetX, targetY)
-                
-                -- Check for a valid target
-                if targetEntity and not targetEntity.isPlayer then
-                    local dist = math.sqrt((targetX - Game.player.x)^2 + (targetY - Game.player.y)^2)
-                    -- Check range and line of sight (using FOV map)
-                    if dist <= Game.player.weapon.range then
-                        if Game.fovMap[targetY] and Game.fovMap[targetY][targetX] then
-                            -- Check for sufficient AP before initiating any attack
-                            if Game.player.actionPoints >= Game.player.weapon.apCost then
-                                if Game.player.weapon.name == C.WeaponType.NANITE_CLOUD_ARRAY then
-                                    -- Start multi-targeting for the orb attack
-                                    self.multiTargetData = {
-                                        targets = {}, -- Start with an empty list
-                                        maxTargets = 3,
-                                    }
-                                    -- The first target selection happens here
-                                    self:selectMultiTarget() 
-                                    return -- Don't end turn yet, more targets to select
-                                end
-                                tookAction = Game.player:attack(targetEntity)
-                            else
-                                GameLogSystem.logNoAP("fire")
-                            end
-                        else
-                            MessageLog.add("You don't have a clear shot!", "info")
+                -- Check for sufficient AP before initiating any ability
+                if Game.player.actionPoints < ability.apCost then
+                    GameLogSystem.logNoAP(ability.name)
+                    return
+                end
+
+                if ability.targeting == "single_enemy" or ability.targeting == "multi_enemy" then
+                    local targetEntity = Game.getEntityAt(self.cursor.x, self.cursor.y)
+                    if targetEntity and not targetEntity.isPlayer then
+                        if ability.targeting == "multi_enemy" then
+                            self.multiTargetData = { targets = {}, maxTargets = ability.maxTargets }
+                            self:selectMultiTarget()
+                            return -- Don't end turn yet
                         end
+                        -- Single target ranged attack
+                        Game.player:attack(targetEntity)
+                        Game.player.actionPoints = Game.player.actionPoints - ability.apCost
+                        tookAction = true
                     else
-                        GameLogSystem.logOutOfRange()
+                        GameLogSystem.logInvalidTarget()
+                    end
+                elseif ability.targeting == "empty_tile" then
+                    local targetEntity = Game.getEntityAt(self.cursor.x, self.cursor.y)
+                    local map = Game.floors[Game.currentFloor].map
+                    local tile = map[self.cursor.y][self.cursor.x]
+                    if not targetEntity and (tile == 1 or tile == 4) then
+                        Game.player.x = self.cursor.x
+                        Game.player.y = self.cursor.y
+                        Game.player.actionPoints = Game.player.actionPoints - ability.apCost
+                        Game.player:setCooldown(ability.key, ability.cooldown)
+                        GameLogSystem.logMessage("You leap through space.", "info")
+                        tookAction = true
                     end
                 else
                     GameLogSystem.logInvalidTarget()
@@ -424,20 +404,47 @@ function PlayingState:keypressed(key)
 
             if tookAction then
                 self.targetingMode = false
-                self.isFiring = false
+                self.isUsingAbility = false
                 self:checkEndOfPlayerTurn()
             end
         end
     elseif self.inventoryMode then
-        if key == 'w' then self.selectedItemIndex = math.max(1, self.selectedItemIndex - 1)
-        elseif key == 's' then self.selectedItemIndex = math.min(#Game.player.inventory, self.selectedItemIndex + 1)
-        elseif key == 'return' then
-            local item = Game.player.inventory[self.selectedItemIndex]
-            if item and Game.player:useItem(item) then
-                table.remove(Game.player.inventory, self.selectedItemIndex)
-                self.inventoryMode = false
-                -- Using an item costs a turn
-                self:checkEndOfPlayerTurn()
+        if key == 'tab' then
+            self.inventoryTab = (self.inventoryTab == "inventory") and "equipment" or "inventory"
+            self.selectedItemIndex = 1 -- Reset selection when tabbing
+        elseif key == 'w' then
+            self.selectedItemIndex = math.max(1, self.selectedItemIndex - 1)
+        elseif key == 's' then
+            local maxItems = (self.inventoryTab == "inventory") and #Game.player.inventory or #GameUI.slotOrder
+            self.selectedItemIndex = math.min(maxItems, self.selectedItemIndex + 1)
+        elseif key == 'return' then -- Use/Equip/Unequip
+            local tookAction = false
+            if self.inventoryTab == "inventory" then
+                local item = Game.player.inventory[self.selectedItemIndex]
+                if item and Game.player:useItem(item) then
+                    -- useItem handles both consuming and equipping
+                    if is_a(item, require('src.entities.Equipment')) then
+                        -- If it was equipment, it's now in a slot, so just remove from inventory
+                        table.remove(Game.player.inventory, self.selectedItemIndex)
+                    else
+                        -- If it was a consumable, it's used up
+                        table.remove(Game.player.inventory, self.selectedItemIndex)
+                    end
+                    tookAction = true
+                else
+                    GameLogSystem.logCannotUseItem()
+                end
+            elseif self.inventoryTab == "equipment" then
+                local slot = GameUI.slotOrder[self.selectedItemIndex]
+                if Game.player.equipment[slot] then
+                    Game.player:unequip(slot)
+                    tookAction = true
+                end
+            end
+
+            if tookAction then
+                self.inventoryMode = false -- Close inventory on action
+                self:checkEndOfPlayerTurn() -- Using/equipping/unequipping costs a turn
             else
                 GameLogSystem.logCannotUseItem()
             end
@@ -451,8 +458,6 @@ function PlayingState:keypressed(key)
 
         if key == 'l' then
             self:startTargeting(false)
-        elseif key == 'f' and Game.player.weapon and Game.player.weapon.range > 1 then
-            self:startTargeting(true)
         elseif key == 'g' then
             local corpseToLoot = nil
             -- Prioritize looting corpses
@@ -490,8 +495,26 @@ function PlayingState:keypressed(key)
                 end
             end
             if not tookAction then GameLogSystem.logNothingToPickup() end
-        elseif key == 'u' then
+        elseif key == 'i' then
             self:startInventory()
+        elseif key == 'q' then
+            Game.player:switchActiveWeapon()
+        elseif key == 'k' then
+            self.showKeymap = true
+        elseif key == 'f' then -- Use selected ability
+            local ability = Game.player.abilities[Game.player.selectedAbilityIndex]
+            if ability then
+                if Game.player.abilityCooldowns[ability.key] and Game.player.abilityCooldowns[ability.key] > 0 then
+                    GameLogSystem.logOnCooldown(ability.name, Game.player.abilityCooldowns[ability.key])
+                elseif ability.targeting then
+                    self:startTargeting(true) -- Start targeting for an ability
+                else
+                    -- Handle non-targeted abilities (e.g., Gecko Strike)
+                end
+            end
+        elseif key == 'v' then -- Cycle abilities
+            Game.player:cycleAbility()
+            -- Cycling abilities does not cost a turn
         else
             -- Movement and Wait actions
             if currentEntity.actionPoints > 0 then
@@ -499,9 +522,9 @@ function PlayingState:keypressed(key)
                 if key == "up" then MessageLog.scroll(-1); return end -- Scrolling does not take a turn
                 if key == "down" then MessageLog.scroll(1); return end -- Scrolling does not take a turn
 
-                if key == "w" then tookAction = Game.player:move(0, -1)
-                elseif key == "s" then tookAction = Game.player:move(0, 1)
-                elseif key == "a" then tookAction = Game.player:move(-1, 0)
+                if key == "w" then tookAction = Game.player:move(0, -1) -- Move Up
+                elseif key == "s" then tookAction = Game.player:move(0, 1) -- Move Down
+                elseif key == "a" then tookAction = Game.player:move(-1, 0) -- Move Left
                 elseif key == "d" then tookAction = Game.player:move(1, 0)
                 elseif key == "space" then
                     -- Waiting consumes all remaining AP and ends the turn.
@@ -531,12 +554,14 @@ function PlayingState:checkEndOfPlayerTurn()
     if Game.player.actionPoints <= 0 then
         -- Check if any enemies are left to take a turn.
         local hasEnemies = #Game.turnQueue > 1
-        if hasEnemies then
-            Game.nextTurn()
-        else
-            -- No enemies, so immediately reset the player's AP for their next turn.
-            Game.player:resetActionPoints()
-        end
+        Game.nextTurn()
+
+        -- After the player's turn is over and we've advanced the turn,
+        -- process all subsequent AI turns until it's the player's turn again.
+        self:processAITurns()
+    else
+        -- If player still has AP, it's still their turn.
+        -- No need to do anything here, just wait for the next input.
     end
 end
 
@@ -554,14 +579,16 @@ function PlayingState:selectMultiTarget()
     end
 
     if #self.multiTargetData.targets >= self.multiTargetData.maxTargets then
+        local ability = Game.player.abilities[Game.player.selectedAbilityIndex]
         -- All targets selected, perform the attacks and consume AP
-        Game.player.actionPoints = Game.player.actionPoints - Game.player.weapon.apCost
+        Game.player.actionPoints = Game.player.actionPoints - ability.apCost
         for _, target in ipairs(self.multiTargetData.targets) do
             -- We call the internal resolve function that doesn't consume more AP
             Game.player:_resolveAttack(target) 
         end
+        Game.player:setCooldown(ability.key, ability.cooldown)
         self.targetingMode = false
-        self.isFiring = false
+        self.isUsingAbility = false
         self.multiTargetData = nil
         self:checkEndOfPlayerTurn()
     end

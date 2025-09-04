@@ -41,9 +41,20 @@ function Game.updateCamera()
     end
 end
 
-function Game.getEntityAt(x, y)
+function Game.getEntitiesAt(x, y)
+    local foundEntities = {}
     for _, entity in ipairs(Game.entities) do
-        if entity.x == x and entity.y == y and entity.blocksMovement and entity ~= Game.player then
+        if entity.x == x and entity.y == y and entity ~= Game.player then
+            table.insert(foundEntities, entity)
+        end
+    end
+    return foundEntities
+end
+
+function Game.getEntityAt(x, y)
+    local entitiesAtLocation = Game.getEntitiesAt(x, y)
+    for _, entity in ipairs(entitiesAtLocation) do
+        if entity.blocksMovement then
             return entity
         end
     end
@@ -77,6 +88,7 @@ function Game.nextTurn()
         if Game.currentTurnIndex > #Game.turnQueue then
             Game.currentTurnIndex = 1
             -- New round - reset everyone's action points
+            Game.player:tickCooldowns() -- Tick player ability cooldowns
             local Actor = require('src.entities.Actor')
             for _, entity in ipairs(Game.entities) do
                 if is_a(entity, Actor) then
@@ -93,13 +105,13 @@ end
 
 function Game.dropItem(dropTable, x, y)
     if not dropTable then return end
-    local Item = require('src.entities.Item')
+    local ItemFactory = require('src.entities.Item')
 
     for _, itemDrop in ipairs(dropTable) do
         if love.math.random() < itemDrop.chance then
             local itemData = config.items[itemDrop.name]
             if itemData then
-                local itemEntity = Item:new(x, y, itemData.char, itemData.color, itemData.name, itemData)
+                local itemEntity = ItemFactory.create(x, y, itemDrop.name)
                 table.insert(Game.entities, itemEntity)
             end
         end
@@ -290,13 +302,14 @@ function Game.changeFloor(direction)
 end
 
 function Game.initialize(loadout)
+    local ItemFactory = require('src.entities.Item')
     local Player = require('src.entities.Player')
     Game.entities = {}
     Game.currentFloor = 1
     Game.turnQueue = {}
     Game.uniqueEnemiesSpawned = {}
     Game.currentTurnIndex = 1
-    
+
     Game.lastLoadout = loadout -- Store the selected loadout for fast restarts
     -- Initialize FOV and explored maps
     Game.fovMap = {}
@@ -308,8 +321,21 @@ function Game.initialize(loadout)
     end
 
     -- Create the player object. Its position will be set by changeFloor.
-    Game.player = Player:new(0, 0, "@", {1, 1, 1}, "Player", loadout.health, loadout.actionPoints, loadout)
+    Game.player = Player:new(0, 0, "@", {1, 1, 1}, "Player")
 
+    -- Equip starting items
+    Game.player:equip(ItemFactory.create(0, 0, "elegant_blouse"))
+    Game.player:equip(ItemFactory.create(0, 0, "refined_pantaloons"))
+    Game.player:equip(ItemFactory.create(0, 0, "sensible_boots"))
+    Game.player:equip(ItemFactory.create(0, 0, "nobles_knife"))
+
+    -- Equip the chosen loadout item
+    if loadout.implant then
+        Game.player:equip(ItemFactory.create(0, 0, loadout.implant))
+    elseif loadout.weapon then
+        Game.player:equip(ItemFactory.create(0, 0, loadout.weapon))
+    end
+    
     -- Set up the first floor by calling changeFloor with a direction of 0.
     -- This will generate the map, spawn enemies, and place the player correctly.
     Game.changeFloor(0)
