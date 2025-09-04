@@ -1,0 +1,13 @@
+{
+    "Lua.diagnostics.globals": [
+        "love",
+        "love.load",
+        "love.update",
+        "love.draw",
+        "love.keypressed",
+        "love.mousepressed"
+    ],
+    "Lua.workspace.library": [
+        "${3rd}/love2d/library"
+    ]
+}
