@@ -29,6 +29,11 @@ function MessageLog.add(text, colorKey)
     end
 end
 
+function MessageLog.clear()
+    MessageLog.messages = {}
+    MessageLog.scrollOffset = 0
+end
+
 function MessageLog.getMessages()
     local visibleMessages = {}
     for i = 1 + MessageLog.scrollOffset, #MessageLog.messages do

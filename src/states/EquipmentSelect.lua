@@ -9,7 +9,7 @@ local EquipmentSelectState = {}
 function EquipmentSelectState:new(changeState)
     local state = {
         selectedOption = 1,
-        options = {"orbs", "laser", "war_gecko"},
+        options = {"nanite_cloud_array", "type_77", "war_gecko"},
         changeState = changeState
     }
     setmetatable(state, self)
@@ -35,8 +35,8 @@ function EquipmentSelectState:draw()
     love.graphics.printf("Choose Your Equipment", 0, 50, screenW, "center")
     
     -- --- Tab Drawing Logic ---
-    local tabWidth = 200
-    local tabHeight = 40
+    local tabWidth = 300 -- Increased size
+    local tabHeight = 60  -- Increased size
     local totalTabsWidth = #self.options * tabWidth
     local tabsStartX = (screenW - totalTabsWidth) / 2
     local tabsY = 120
@@ -60,7 +60,8 @@ function EquipmentSelectState:draw()
 
         -- Draw tab text
         love.graphics.setColor(1, 1, 1)
-        love.graphics.printf(loadout.name, tabX, tabsY + 10, tabWidth, "center")
+        love.graphics.setFont(Assets.fonts.hostGroteskRegular) -- Use Host Grotesk font
+        love.graphics.printf(loadout.name, tabX, tabsY + 20, tabWidth, "center")
     end
 
     -- --- Content Panel Drawing Logic ---

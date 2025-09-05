@@ -9,7 +9,8 @@ local states = {
     equipment_select = require('src.states.EquipmentSelect'),
     playing = require('src.states.Playing'),
     victory = require('src.states.Victory'),
-    game_over = require('src.states.GameOver')
+    game_over = require('src.states.GameOver'),
+    level_up = require('src.states.LevelUp')
 }
 
 local currentState
@@ -24,6 +25,22 @@ function is_a(object, class)
         metatable = getmetatable(metatable)
     end
     return false
+end
+
+-- Global deepcopy function for tables
+function deepcopy(orig)
+    local orig_type = type(orig)
+    local copy
+    if orig_type == 'table' then
+        copy = {}
+        for orig_key, orig_value in next, orig, nil do
+            copy[deepcopy(orig_key)] = deepcopy(orig_value)
+        end
+        setmetatable(copy, deepcopy(getmetatable(orig)))
+    else -- number, string, boolean, etc
+        copy = orig
+    end
+    return copy
 end
 
 -- This global function will be passed to states so they can change the game state.
@@ -48,6 +65,7 @@ function love.load()
     -- Instantiate all states, passing the changeState function
     for name, stateClass in pairs(states) do
         stateInstances[name] = stateClass:new(changeState)
+        require('src.Game').states[name] = stateInstances[name] -- Make state instances globally accessible
     end
     
     -- Set up default font for the game

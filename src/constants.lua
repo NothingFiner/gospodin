@@ -19,6 +19,13 @@ constants.WeaponType = {
     GECKO_STRIKE = "Gecko Strike"
 }
 
+constants.Ability = {
+    SHOOT_TYPE77 = "shoot_type77",
+    SHOOT_NANITE = "shoot_nanite",
+    GECKO_STRIKE = "gecko_strike",
+    GECKO_LEAP = "gecko_leap"
+}
+
 constants.StatusEffect = {
     POISON = "poison",
     STUN = "stun"

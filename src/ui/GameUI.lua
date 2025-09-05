@@ -13,7 +13,7 @@ GameUI.slotOrder = {C.EquipmentSlot.IMPLANT, C.EquipmentSlot.HEAD, C.EquipmentSl
 function GameUI.draw(playingState)
     -- Define layout regions
     local screenW, screenH = love.graphics.getWidth(), love.graphics.getHeight()
-    local statsPanelW = screenW * 0.25 -- Reverted to original width
+    local statsPanelW = screenW * 0.3 -- Increased width by 20% (from 0.25)
     local commandPanelH = screenH * 0.05 -- Reverted to original height
     local mapX = statsPanelW
     local mapW = screenW - statsPanelW
@@ -39,6 +39,14 @@ function GameUI.draw(playingState)
         currentY = currentY + 20
         love.graphics.printf(string.format("XP: %d/%d", Game.player.xp, Game.player.xpToNextLevel), textX, currentY, textWidth, "left")
         currentY = currentY + 40
+        
+        -- Add a visual indicator for level up
+        if Game.player.xp >= Game.player.xpToNextLevel then
+            -- Make the text flash by changing its alpha based on time
+            local alpha = (math.sin(love.timer.getTime() * 5) + 1) / 2
+            love.graphics.setColor(1, 1, 0, alpha)
+            love.graphics.printf("Level Up!", textX + 70, currentY - 40, textWidth, "left")
+        end
 
         love.graphics.printf("STR: " .. Game.player.strength, textX, currentY, textWidth, "left")
         currentY = currentY + 20
@@ -57,13 +65,18 @@ function GameUI.draw(playingState)
         love.graphics.setColor(0.8, 0.8, 0.8)
         love.graphics.printf("--- Log ---", textX, currentY, textWidth, "left")
         currentY = currentY + 20
-        local maxLogLines = math.floor((screenH - currentY - commandPanelH - padding) / 15)
+        
+        local font = love.graphics.getFont()
+        local lineHeight = font:getHeight()
         local messages = MessageLog.getMessages()
-        for i = 1, math.min(maxLogLines, #messages) do
+        for i = 1, #messages do
+            if currentY > screenH - commandPanelH - padding - lineHeight then break end -- Stop if we run out of space
             local msg = messages[i]
             love.graphics.setColor(msg.color)
-            love.graphics.printf(msg.text, textX, currentY, textWidth, "left")
-            currentY = currentY + 15 -- Move down for the next message
+            -- Use a wrapped text object to correctly calculate height
+            local wrappedText = love.graphics.newText(font, msg.text, textWidth)
+            love.graphics.draw(wrappedText, textX, currentY)
+            currentY = currentY + wrappedText:getHeight() + 2 -- Move Y down by the height of the wrapped text
         end
     end
 

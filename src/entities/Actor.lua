@@ -1,7 +1,6 @@
 -- /Users/eliotasenothgaspar-finer/Projects/Gospodin/src/entities/Actor.lua
 
 local Entity = require('src.entities.Entity')
-local CombatLogSystem = require('src.systems.CombatLogSystem')
 local GameLogSystem = require('src.systems.GameLogSystem')
 local C = require('src.constants')
 
@@ -9,6 +8,9 @@ local Actor = {}
 setmetatable(Actor, {__index = Entity}) -- Inheritance
 Actor.__index = Actor
 Actor.__type = "Actor"
+
+-- This needs to be declared after the class table to avoid circular dependency issues with other files that might require Actor.
+local config = require('src.config')
 
 function Actor:new(x, y, char, color, name, health, actionPoints)
     local actor = Entity:new(x, y, char, color, name)
@@ -58,8 +60,17 @@ function Actor:move(dx, dy)
 
     if targetEntity and targetEntity ~= self and targetEntity.blocksMovement then
         if self.isPlayer ~= targetEntity.isPlayer then
-            local success = self:attack(targetEntity)
-            if not success and self.isPlayer then GameLogSystem.logNoAP("attack") end
+            local success
+            if self.isPlayer then
+                -- Player bump attacks use the basic attack ability
+                local basicAttack = require('src.config').abilities.basic_attack
+                -- The key needs to be set manually here since we're not pulling from the player's list
+                basicAttack.key = "basic_attack" 
+                success = self:useAbility(basicAttack, targetEntity) 
+            else
+                -- Enemies use their standard attack
+                success = self:attack(targetEntity)
+            end
             return true
         else
             return failMove()
@@ -81,19 +92,40 @@ function Actor:attack(target)
     return self:_resolveAttack(target)
 end
 
-function Actor:_resolveAttack(target)
+function Actor:_resolveAttack(target, ability)
     if not target.dodge then return true end -- Can't attack non-actors
 
     if love.math.random(100) <= target.dodge then
-        CombatLogSystem.logDodge(self, target)
+        GameLogSystem.logDodge(self, target)
         return true
     end
+    
+    local baseDamage, isCrit = 0, false
 
-    local baseDamage
-    if self.isPlayer and self.weapon then
-        baseDamage = self.weapon.damage + math.floor(self.strength / 2)
+    -- Critical Hit Check
+    local critChance = self.critChance or 5 -- Default 5% for enemies
+    if love.math.random(100) <= critChance then
+        isCrit = true
+    end
+
+    if self.isPlayer and ability then
+        -- Player damage is based on the ability used
+        local abilityDamage = config.abilities[ability.key].damage or {min=1, max=4}
+        baseDamage = love.math.random(abilityDamage.min, abilityDamage.max)
+        baseDamage = baseDamage + math.floor(self.strength / 2)
     else
+        -- Standard attack damage (for enemies or player basic attacks)
         baseDamage = love.math.random(self.damage.min, self.damage.max)
+    end
+
+    if isCrit then
+        local critMultiplier = (self.critDamageBonus or 100) / 100
+        local bonusCritDamage = 0
+        if type(self.critDamageBonus) == "table" then
+             -- This handles additive dice rolls like from the Sonic Dagger
+             bonusCritDamage = love.math.random(self.critDamageBonus.min, self.critDamageBonus.max)
+        end
+        baseDamage = math.floor(baseDamage * (1 + critMultiplier)) + bonusCritDamage
     end
 
     local damageReduction = math.min(baseDamage, target.armor)
@@ -102,8 +134,25 @@ function Actor:_resolveAttack(target)
     if finalDamage > 0 then
         target.health = target.health - finalDamage
         if target.isPlayer then require('src.Game').lastPlayerAttacker = self end
-        CombatLogSystem.logAttack(self, target, finalDamage)
+        GameLogSystem.logAttack(self, target, finalDamage, isCrit)
         if target.health <= 0 then self:onKill(target) end
+    end
+
+    -- Apply on-hit effects from perks
+    if self.isPlayer then
+        for _, perk in ipairs(self.perks) do
+            for _, effect in ipairs(perk.effects) do
+                if effect.type == "add_effect" and effect.effect == "poison_on_hit" then
+                    if love.math.random() <= effect.chance then
+                        require('src.systems.StatusEffectSystem').apply(target, {
+                            type = C.StatusEffect.POISON,
+                            duration = effect.duration,
+                            damage = love.math.random(effect.damage.min, effect.damage.max)
+                        })
+                    end
+                end
+            end
+        end
     end
     return true
 end
@@ -112,22 +161,26 @@ function Actor:onKill(target)
     local Game = require('src.Game')
     local Corpse = require('src.entities.Corpse')
 
-    if self == Game.player then Game.player:giveXP(target.xpValue) end
+    if self == Game.player and Game.player:giveXP(target.xpValue) then
+        -- If giveXP returns true, a level up occurred. Change the state.
+        changeState(config.GameState.LEVEL_UP)
+    end
 
     if target == Game.player then
-        CombatLogSystem.logDeath(target)
+        GameLogSystem.logDeath(target)
         return
     end
 
     -- Find the dead entity in the main list and replace it with a corpse
     for i, entity in ipairs(Game.entities) do
         if entity == target then
-            CombatLogSystem.logDeath(target)
+            GameLogSystem.logDeath(target)
             local corpse = Corpse:new(target.x, target.y, target.name, Game.getDrops(target.dropTable))
             Game.entities[i] = corpse -- Replace with corpse
             break
         end
     end
+
 end
 
 function Actor:resetActionPoints()

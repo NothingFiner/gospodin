@@ -22,6 +22,7 @@ local Game = {
     tileSize = 32,
     playerVisionRadius = 8,
     lastPlayerAttacker = nil,
+    states = {}, -- To hold state instances
     lastLoadout = nil
 }
 
@@ -310,6 +311,9 @@ function Game.initialize(loadout)
     Game.uniqueEnemiesSpawned = {}
     Game.currentTurnIndex = 1
 
+    -- Clear the message log for a fresh start
+    MessageLog.clear()
+
     Game.lastLoadout = loadout -- Store the selected loadout for fast restarts
     -- Initialize FOV and explored maps
     Game.fovMap = {}
@@ -324,16 +328,16 @@ function Game.initialize(loadout)
     Game.player = Player:new(0, 0, "@", {1, 1, 1}, "Player")
 
     -- Equip starting items
-    Game.player:equip(ItemFactory.create(0, 0, "elegant_blouse"))
-    Game.player:equip(ItemFactory.create(0, 0, "refined_pantaloons"))
-    Game.player:equip(ItemFactory.create(0, 0, "sensible_boots"))
-    Game.player:equip(ItemFactory.create(0, 0, "nobles_knife"))
+    Game.player:equip(ItemFactory.create(0, 0, "elegant_blouse"), nil, true)
+    Game.player:equip(ItemFactory.create(0, 0, "refined_pantaloons"), nil, true)
+    Game.player:equip(ItemFactory.create(0, 0, "sensible_boots"), nil, true)
+    Game.player:equip(ItemFactory.create(0, 0, "nobles_knife"), nil, true)
 
     -- Equip the chosen loadout item
     if loadout.implant then
-        Game.player:equip(ItemFactory.create(0, 0, loadout.implant))
+        Game.player:equip(ItemFactory.create(0, 0, loadout.implant), nil, true)
     elseif loadout.weapon then
-        Game.player:equip(ItemFactory.create(0, 0, loadout.weapon))
+        Game.player:equip(ItemFactory.create(0, 0, loadout.weapon), nil, true)
     end
     
     -- Set up the first floor by calling changeFloor with a direction of 0.

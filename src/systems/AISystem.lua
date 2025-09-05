@@ -14,10 +14,12 @@ function AISystem.performTurn(entity)
     
     -- If adjacent, attack
     if math.abs(dx) <= 1 and math.abs(dy) <= 1 and (dx ~= 0 or dy ~= 0) then
-        local success = entity:attack(Game.player)
-        if not success then
-            -- If the attack failed (e.g., not enough AP), the AI's turn must still
-            -- end to prevent an infinite loop. We'll burn its remaining AP.
+        -- Keep attacking as long as there is enough AP.
+        while entity:attack(Game.player) do
+            -- The attack was successful. The loop will continue if there's enough AP for another.
+        end
+        -- Once the entity can no longer attack (not enough AP), burn remaining AP to end turn.
+        if entity.actionPoints > 0 then
             entity.actionPoints = 0
         end
         return

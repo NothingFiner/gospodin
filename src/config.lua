@@ -9,7 +9,8 @@ config.GameState = {
     EQUIPMENT_SELECT = "equipment_select",
     PLAYING = "playing",
     VICTORY = "victory",
-    GAME_OVER = "game_over"
+    GAME_OVER = "game_over",
+    LEVEL_UP = "level_up"
 }
 
 -- Floor definitions
@@ -55,17 +56,17 @@ config.floorData = {
 
 -- Equipment loadouts
 config.equipmentLoadouts = {
-    orbs = {
+    nanite_cloud_array = {
         name = "Nanite Cloud Array",
         description = "A suite of specialized neural coprocessors and nano-scale factories replace your biological spinal cord, allowing you to control a swarm of tiny machines that can be used for defense and offense.",
         implant = "nanite_cloud_array"
     },
-    laser = {
+    type_77 = {
         name = "Type 77",
         description = "Maybe your body can't handle traumatic implants, maybe you're old enough to remember the horror stories when they were first developed. Either way, the Type 77 is an old weapon for Old Souls.",
         weapon = "type_77"
     },
-    war_gecko = {
+    war_gecko = { -- This one is already consistent
         name = "War Gecko",
         description = "An implant suite named after its most distinct constituant: the replacement of the epidermis with billions of minute suckers. In conjunction with your enhanced myofibers and composite skeleton you can hold onto any surface or rip the skin off of an unaugmented human being.",
         implant = "war_gecko"
@@ -84,18 +85,107 @@ config.playerStats = {
     xpPerLevel = 100 -- XP needed for the next level is level * xpPerLevel
 }
 
+-- Perk definitions
+config.perks = {
+    -- General Perks
+    beefy = {
+        name = "Beefy",
+        description = "Your physical form is exceptionally robust.",
+        effects = { {type = "stat", stat = "health", value = 30} }
+    },
+    digital_weapons = {
+        name = "Digital Weapons",
+        description = "Nanites sharpen your every blow.",
+        effects = { {type = "stat", stat = "damage", value = {min=2, max=2}} }
+    },
+    way_of_the_mongoose = {
+        name = "Way of the Mongoose",
+        description = "Your movements are fluid and your system resilient.",
+        effects = { {type = "stat", stat = "dodge", value = 5}, {type = "immunity", status = C.StatusEffect.POISON} }
+    },
+    sharpshooter = {
+        name = "Sharpshooter",
+        description = "You have a preternatural aim with ranged weapons.",
+        effects = { {type = "stat", stat = "critChance", value = 10, condition="ranged"} } -- Condition needs implementation
+    },
+    anatomist = {
+        name = "Anatomist",
+        description = "You know exactly where to strike for maximum effect.",
+        effects = { {type = "stat", stat = "critDamage", value = {min=2, max=4}} }
+    },
+    prodigy = {
+        name = "Prodigy",
+        description = "You are a natural at everything.",
+        effects = { {type = "stat", stat = "strength", value = 1}, {type = "stat", stat = "dexterity", value = 1}, {type = "stat", stat = "intelligence", value = 1} }
+    },
+    first_aid = {
+        name = "First Aid",
+        description = "Gain an ability to perform emergency self-repair.",
+        effects = { {type = "add_ability", ability = "first_aid_heal"} }
+    },
+    -- Upgraded Perks
+    surgical_expert = {
+        name = "Surgical Expert",
+        description = "Your knowledge of anatomy is lethally precise.",
+        prereq = "anatomist",
+        effects = { {type = "stat", stat = "critDamage", value = {min=2, max=4}} }
+    },
+    -- Implant-specific perks
+    advanced_targeting_algorithms = {
+        name = "Advanced Targeting",
+        description = "Your Nanite Swarm can target one additional enemy.",
+        prereq_implant = "nanite_cloud_array",
+        effects = { {type = "modify_ability", ability = C.Ability.SHOOT_NANITE, property = "maxTargets", value = 1} }
+    },
+    toxic_injectors = {
+        name = "Toxic Injectors",
+        description = "Your melee attacks have a chance to poison enemies.",
+        prereq_implant = "war_gecko",
+        effects = { {type = "add_effect", effect = "poison_on_hit", chance = 0.5, duration = 3, damage = {min=1, max=5}} }
+    }
+}
+
 -- Ability definitions
 config.abilities = {
-    shoot_type77 = {
+    basic_attack = {
+        name = "Basic Attack",
+        description = "A standard melee attack.",
+        apCost = 1,
+        range = 1.5,
+        cooldown = 0,
+        targeting = "single_enemy",
+        effect = "melee_attack",
+        hidden = true,
+        damage = {min=1, max=2} -- Basic attack needs damage
+    },
+    first_aid_heal = {
+        name = "First Aid",
+        description = "Heal for 10 health. 2 Charges, restored on level up.",
+        apCost = 2,
+        cooldown = 0,
+        effect = "heal",
+        amount = 10
+    },
+    toxic_strike = {
+        name = "Toxic Strike",
+        description = "Inject a debilitating poison on hit.",
+        apCost = 0, -- This is a passive effect, not a usable ability
+        cooldown = 0,
+        effect = "apply_status",
+        status = C.StatusEffect.POISON,
+        hidden = true
+    },
+    [C.Ability.SHOOT_TYPE77] = {
         name = "Shoot (Type 77)",
         description = "Fire a high-energy bolt at a single target.",
         apCost = 3,
         range = 5,
         cooldown = 0,
         targeting = "single_enemy",
-        effect = "ranged_attack"
+        effect = "ranged_attack",
+        damage = {min = 6, max = 10}
     },
-    shoot_nanite = {
+    [C.Ability.SHOOT_NANITE] = {
         name = "Nanite Swarm",
         description = "Launch a swarm of nanites at up to 3 targets.",
         apCost = 2,
@@ -103,16 +193,20 @@ config.abilities = {
         cooldown = 0,
         targeting = "multi_enemy",
         maxTargets = 3,
-        effect = "ranged_attack"
+        effect = "ranged_attack",
+        damage = {min = 4, max = 8}
     },
-    gecko_strike = {
+    [C.Ability.GECKO_STRIKE] = {
         name = "Gecko Strike",
         description = "A powerful melee strike that bypasses some armor.",
         apCost = 2,
         cooldown = 0,
-        effect = "melee_attack"
+        targeting = "single_enemy", -- Melee abilities also need a target
+        range = 1.5, -- A bit more than 1 to allow diagonal attacks
+        effect = "melee_attack",
+        damage = {min = 8, max = 12}
     },
-    gecko_leap = {
+    [C.Ability.GECKO_LEAP] = {
         name = "Gecko Leap",
         description = "Instantly leap to a nearby empty tile.",
         apCost = 1,
@@ -147,7 +241,7 @@ config.items = {
         modifiers = {
             health = 10, actionPoints = 1, dodge = 5, armor = -1
         },
-        abilities = {"shoot_nanite"}
+        abilities = {C.Ability.SHOOT_NANITE}
     },
     war_gecko = {
         type = C.ItemType.EQUIPMENT,
@@ -157,7 +251,7 @@ config.items = {
         modifiers = {
             health = 30, actionPoints = 2, dodge = -5, armor = 2
         },
-        abilities = {"gecko_strike", "gecko_leap"}
+        abilities = {C.Ability.GECKO_STRIKE, C.Ability.GECKO_LEAP}
     },
 
     -- === EQUIPMENT: WEAPONS ===
@@ -169,7 +263,7 @@ config.items = {
         modifiers = {
             -- This item's power comes from the ability it grants
         },
-        abilities = {"shoot_type77"}
+        abilities = {C.Ability.SHOOT_TYPE77}
     },
     nobles_knife = {
         type = C.ItemType.EQUIPMENT,
@@ -177,8 +271,20 @@ config.items = {
         char = ")", color = {0.8, 0.8, 0.8},
         slot = C.EquipmentSlot.WEAPON1,
         modifiers = {
-            damage = {min = 1, max = 1} -- Changed to 1d1 from 1d2
+            damage = {min = 1, max = 2}
         }
+    },
+    sonic_dagger = {
+        type = C.ItemType.EQUIPMENT,
+        name = "Sonic Dagger",
+        char = ")", color = {0.4, 0.9, 0.9},
+        slot = C.EquipmentSlot.WEAPON1,
+        modifiers = {
+            damage = {min = 2, max = 4},
+            critChance = 10, -- Additive: +10%
+            critDamage = {min = 1, max = 6} -- Additive: +1d6 bonus damage
+        },
+        abilities = {} -- This weapon uses standard attacks, not special abilities
     },
 
     -- === EQUIPMENT: ARMOR ===

@@ -1,6 +1,6 @@
 -- /Users/eliotasenothgaspar-finer/Projects/Gospodin/src/systems/StatusEffectSystem.lua
 
-local CombatLogSystem = require('src.systems.CombatLogSystem')
+local GameLogSystem = require('src.systems.GameLogSystem')
 local C = require('src.constants')
 
 local StatusEffectSystem = {}
@@ -19,7 +19,7 @@ function StatusEffectSystem.apply(target, effect)
             potency = effect.potency
         }
     end
-    CombatLogSystem.logStatusApplied(target, effect.type)
+    GameLogSystem.logStatusApplied(target, effect.type)
 end
 
 function StatusEffectSystem.processTurn(entity)
@@ -30,11 +30,11 @@ function StatusEffectSystem.processTurn(entity)
         local effect = entity.statusEffects[C.StatusEffect.POISON]
         local damage = effect.damage or 1
         entity.health = entity.health - damage
-        CombatLogSystem.logStatusDamage(entity, C.StatusEffect.POISON, damage)
+        GameLogSystem.logStatusDamage(entity, C.StatusEffect.POISON, damage)
         effect.duration = effect.duration - 1
         if effect.duration <= 0 then
             entity.statusEffects[C.StatusEffect.POISON] = nil
-            CombatLogSystem.logStatusWearsOff(entity, C.StatusEffect.POISON)
+            GameLogSystem.logStatusWearsOff(entity, C.StatusEffect.POISON)
         end
     end
 
@@ -44,7 +44,7 @@ function StatusEffectSystem.processTurn(entity)
         effect.duration = effect.duration - 1
         if effect.duration <= 0 then
             entity.statusEffects[C.StatusEffect.STUN] = nil
-            CombatLogSystem.logStatusWearsOff(entity, C.StatusEffect.STUN)
+            GameLogSystem.logStatusWearsOff(entity, C.StatusEffect.STUN)
         end
     end
 end

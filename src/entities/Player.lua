@@ -2,7 +2,6 @@
 
 local Actor = require('src.entities.Actor')
 local config = require('src.config')
-local CombatLogSystem = require('src.systems.CombatLogSystem')
 local GameLogSystem = require('src.systems.GameLogSystem')
 local C = require('src.constants')
 
@@ -26,6 +25,8 @@ function Player:new(x, y, char, color, name)
     player.baseIntelligence = config.playerStats.intelligence
     player.baseDodge = config.playerStats.baseDodge
     player.baseArmor = config.playerStats.baseArmor
+    player.baseCritChance = 5 -- Base 5% crit chance
+    player.baseCritDamageBonus = 100 -- Base 100% bonus damage (double)
 
     -- Equipment slots
     player.equipment = {
@@ -40,8 +41,10 @@ function Player:new(x, y, char, color, name)
     }
     player.activeWeaponSlot = C.EquipmentSlot.WEAPON1
     player.abilities = {}
+    player.allAbilities = {} -- New table to hold all abilities, including hidden ones
     player.abilityCooldowns = {}
     player.selectedAbilityIndex = 1
+    player.perks = {}
 
     player.sprite = require('src.assets').sprites.player
 
@@ -60,9 +63,36 @@ function Player:recalculateStats()
     self.dodge = self.baseDodge
     self.armor = self.baseArmor
     self.weapon = nil -- Reset weapon, abilities will handle attacks
+    self.critChance = self.baseCritChance
+    self.critDamageBonus = self.baseCritDamageBonus
     self.damage = {min = 1, max = 2} -- Base unarmed damage
     self.abilities = {} -- Reset abilities
+    self.allAbilities = {} -- Reset all abilities
     self.selectedAbilityIndex = 1 -- Reset selected ability
+
+    -- Apply perk effects before equipment
+    for _, perk in ipairs(self.perks) do
+        for _, effect in ipairs(perk.effects) do
+            if effect.type == "stat" then
+                if effect.stat == "health" then self.maxHealth = self.maxHealth + effect.value
+                elseif effect.stat == "strength" then self.strength = self.strength + effect.value
+                elseif effect.stat == "dexterity" then self.dexterity = self.dexterity + effect.value
+                elseif effect.stat == "intelligence" then self.intelligence = self.intelligence + effect.value
+                elseif effect.stat == "dodge" then self.dodge = self.dodge + effect.value
+                elseif effect.stat == "critChance" then self.critChance = self.critChance + effect.value
+                elseif effect.stat == "damage" then
+                    self.damage.min = self.damage.min + effect.value.min
+                    self.damage.max = self.damage.max + effect.value.max
+                end
+            elseif effect.type == "modify_ability" then
+                -- Find the ability in the config and modify it before it gets added to the player
+                local abilityToModify = config.abilities[effect.ability]
+                if abilityToModify then
+                    abilityToModify[effect.property] = (abilityToModify[effect.property] or 0) + effect.value
+                end
+            end
+        end
+    end
 
     -- Apply modifiers from all equipped items
     for slot, item in pairs(self.equipment) do
@@ -76,30 +106,58 @@ function Player:recalculateStats()
                 elseif stat == "dodge" then self.dodge = self.dodge + value
                 elseif stat == "armor" then self.armor = self.armor + value
                 elseif stat == "damage" then
-                    self.damage.min = self.damage.min + value.min
-                    self.damage.max = self.damage.max + value.max
+                    self.damage.min = (self.damage.min or 0) + (value.min or 0)
+                    self.damage.max = (self.damage.max or 0) + (value.max or 0)
+                elseif stat == "critChance" then self.critChance = self.critChance + value
+                elseif stat == "critDamage" then self.critDamageBonus = self.critDamageBonus + value -- For now, we assume the bonus is a table {min, max}
                 end
             end
 
             -- Add abilities from item
             if item.itemData.abilities then
                 for _, abilityKey in ipairs(item.itemData.abilities) do
-                    local ability = config.abilities[abilityKey]
+                    local ability = deepcopy(config.abilities[abilityKey])
                     if ability then
                         -- Add the key to the ability table for reference
                         ability.key = abilityKey
-                        table.insert(self.abilities, ability)
+                        table.insert(self.allAbilities, ability) -- Add to the master list
+                        if not ability.hidden then
+                            table.insert(self.abilities, ability) -- Add to the selectable list
+                        end
                     end
                 end
             end
         end
     end
 
+    -- Add abilities from perks
+    for _, perk in ipairs(self.perks) do
+        for _, effect in ipairs(perk.effects) do
+            if effect.type == "add_ability" then
+                local ability = deepcopy(config.abilities[effect.ability])
+                if ability then
+                    ability.key = effect.ability
+                    table.insert(self.allAbilities, ability)
+                    if not ability.hidden then table.insert(self.abilities, ability) end
+                end
+            end
+        end
+    end
+
+    -- Add the default basic attack ability
+    local basicAttack = config.abilities.basic_attack
+    basicAttack.key = "basic_attack"
+    table.insert(self.allAbilities, 1, basicAttack) -- Add to master list, but not selectable list
+
     -- Ensure health doesn't exceed new maxHealth
     self.health = math.min(self.health, self.maxHealth)
+
+    -- Top off health and AP after calculation
+    self.health = self.maxHealth
+    self.actionPoints = self.maxActionPoints
 end
 
-function Player:equip(item, slot)
+function Player:equip(item, slot, silent)
     -- If a slot is provided, use it. Otherwise, use the item's default slot.
     local targetSlot = slot or item.slot
 
@@ -115,7 +173,9 @@ function Player:equip(item, slot)
 
     -- Place the new item in the slot
     self.equipment[targetSlot] = item
-    GameLogSystem.logMessage("You equip the " .. item.name .. ".", "info")
+    if not silent then
+        GameLogSystem.logMessage("You equip the " .. item.name .. ".", "info")
+    end
 
     self:recalculateStats()
 end
@@ -161,6 +221,50 @@ function Player:setCooldown(abilityKey, turns)
     self.abilityCooldowns[abilityKey] = turns
 end
 
+function Player:useAbility(ability, target)
+    if not ability then return false end
+
+    -- 1. Check AP Cost
+    if self.actionPoints < ability.apCost then
+        GameLogSystem.logNoAP(ability.name)
+        return false
+    end
+
+    -- 2. Check Cooldown
+    if self.abilityCooldowns[ability.key] and self.abilityCooldowns[ability.key] > 0 then
+        GameLogSystem.logOnCooldown(ability.name, self.abilityCooldowns[ability.key])
+        return false
+    end
+
+    -- 3. Execute Effect
+    local success = false
+    if ability.effect == "ranged_attack" or ability.effect == "melee_attack" then
+        success = self:attack(target, ability)
+    elseif ability.effect == "move_to_target" then
+        self.x = target.x
+        self.y = target.y
+        GameLogSystem.logMessage("You leap through space.", "info")
+        success = true
+    end
+
+    -- 4. Finalize if successful
+    if success then
+        self.actionPoints = self.actionPoints - ability.apCost
+        if ability.cooldown > 0 then
+            self:setCooldown(ability.key, ability.cooldown)
+        end
+    end
+
+    return success
+end
+
+-- Override Actor's attack method to be ability-driven
+function Player:attack(target, ability)
+    -- The player's attack is now just a wrapper around _resolveAttack
+    -- AP costs and cooldowns are handled by useAbility
+    return self:_resolveAttack(target, ability)
+end
+
 function Player:useItem(item)
     local Consumable = require('src.entities.Consumable')
     local Equipment = require('src.entities.Equipment')
@@ -179,23 +283,19 @@ end
 
 function Player:giveXP(amount)
     self.xp = self.xp + amount
-    CombatLogSystem.logXPGain(amount)
+    GameLogSystem.logXPGain(amount)
 
-    if self.xp >= self.xpToNextLevel then self:levelUp() end
+    if self.xp >= self.xpToNextLevel then
+        self:levelUp()
+        return true
+    end
+    return false
 end
 
 function Player:levelUp()
     self.level = self.level + 1
     self.xp = self.xp - self.xpToNextLevel
     self.xpToNextLevel = self.level * config.playerStats.xpPerLevel
-
-    self.maxHealth = self.maxHealth + 10
-    self.health = self.maxHealth
-    self.strength = self.strength + 1
-    self.dexterity = self.dexterity + 1
-    self.intelligence = self.intelligence + 1
-
-    CombatLogSystem.logLevelUp(self.level)
 end
 
 return Player

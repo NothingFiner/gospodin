@@ -76,7 +76,7 @@ function PlayingState:draw()
 
     -- Define layout regions
     local screenW, screenH = love.graphics.getWidth(), love.graphics.getHeight()
-    local statsPanelW = screenW * 0.375 -- 50% wider than 0.25
+    local statsPanelW = screenW * 0.3 -- Match the new width from GameUI
     local commandPanelH = screenH * 0.0125 -- 25% of the previous 0.05 height
     local mapX, mapY = statsPanelW, 0
     local mapW, mapH = screenW - statsPanelW, screenH - commandPanelH
@@ -228,9 +228,9 @@ function PlayingState:draw()
     love.graphics.setColor(0.4, 0.4, 0.4)
     love.graphics.setLineWidth(2)
     -- Vertical line
-    love.graphics.line(mapX, mapY, mapX, screenH)
+    love.graphics.line(mapX, mapY, mapX, screenH - commandPanelH)
     -- Horizontal line
-    love.graphics.line(mapX, mapH, screenW, mapH)
+    love.graphics.line(0, mapH, screenW, mapH)
 
     -- Draw UI text content
     GameUI.draw(self)
@@ -364,39 +364,22 @@ function PlayingState:keypressed(key)
                     return -- Don't end turn yet
                 end
 
-                -- Check for sufficient AP before initiating any ability
-                if Game.player.actionPoints < ability.apCost then
-                    GameLogSystem.logNoAP(ability.name)
-                    return
-                end
-
                 if ability.targeting == "single_enemy" or ability.targeting == "multi_enemy" then
                     local targetEntity = Game.getEntityAt(self.cursor.x, self.cursor.y)
                     if targetEntity and not targetEntity.isPlayer then
                         if ability.targeting == "multi_enemy" then
                             self.multiTargetData = { targets = {}, maxTargets = ability.maxTargets }
                             self:selectMultiTarget()
-                            return -- Don't end turn yet
+                            return -- Don't end turn yet, still selecting targets
                         end
-                        -- Single target ranged attack
-                        Game.player:attack(targetEntity)
-                        Game.player.actionPoints = Game.player.actionPoints - ability.apCost
-                        tookAction = true
+                        -- A single-target attack ability
+                        tookAction = Game.player:useAbility(ability, targetEntity)
                     else
                         GameLogSystem.logInvalidTarget()
                     end
                 elseif ability.targeting == "empty_tile" then
-                    local targetEntity = Game.getEntityAt(self.cursor.x, self.cursor.y)
-                    local map = Game.floors[Game.currentFloor].map
-                    local tile = map[self.cursor.y][self.cursor.x]
-                    if not targetEntity and (tile == 1 or tile == 4) then
-                        Game.player.x = self.cursor.x
-                        Game.player.y = self.cursor.y
-                        Game.player.actionPoints = Game.player.actionPoints - ability.apCost
-                        Game.player:setCooldown(ability.key, ability.cooldown)
-                        GameLogSystem.logMessage("You leap through space.", "info")
-                        tookAction = true
-                    end
+                    -- The target for a movement ability is the coordinate, not an entity
+                    tookAction = Game.player:useAbility(ability, {x = self.cursor.x, y = self.cursor.y})
                 else
                     GameLogSystem.logInvalidTarget()
                 end
@@ -508,8 +491,6 @@ function PlayingState:keypressed(key)
                     GameLogSystem.logOnCooldown(ability.name, Game.player.abilityCooldowns[ability.key])
                 elseif ability.targeting then
                     self:startTargeting(true) -- Start targeting for an ability
-                else
-                    -- Handle non-targeted abilities (e.g., Gecko Strike)
                 end
             end
         elseif key == 'v' then -- Cycle abilities
@@ -580,12 +561,11 @@ function PlayingState:selectMultiTarget()
 
     if #self.multiTargetData.targets >= self.multiTargetData.maxTargets then
         local ability = Game.player.abilities[Game.player.selectedAbilityIndex]
-        -- All targets selected, perform the attacks and consume AP
-        Game.player.actionPoints = Game.player.actionPoints - ability.apCost
+        -- All targets selected, perform the attacks
         for _, target in ipairs(self.multiTargetData.targets) do
-            -- We call the internal resolve function that doesn't consume more AP
-            Game.player:_resolveAttack(target) 
+            Game.player:_resolveAttack(target, ability)
         end
+        Game.player.actionPoints = Game.player.actionPoints - ability.apCost
         Game.player:setCooldown(ability.key, ability.cooldown)
         self.targetingMode = false
         self.isUsingAbility = false
