@@ -22,6 +22,15 @@ function Assets.load()
     -- Load character sprites
     Assets.sprites.player = love.graphics.newImage("assets/sprites/characters/player.png")
 
+    -- Load tile sprites
+    Assets.sprites.manor_stairs_up = love.graphics.newImage("assets/tiles/manor-stairs-up.png")
+    Assets.sprites.manor_stairs_down = love.graphics.newImage("assets/tiles/manor-stairs-down.png")
+    Assets.sprites.village_floor = love.graphics.newImage("assets/tiles/village-floor.png")
+    Assets.sprites.village_floor_1 = love.graphics.newImage("assets/tiles/village-floor-1.png")
+    Assets.sprites.village_floor_2 = love.graphics.newImage("assets/tiles/village-floor-2.png")
+    Assets.sprites.village_floor_3 = love.graphics.newImage("assets/tiles/village-floor-3.png")
+    Assets.sprites.village_to_sewers = love.graphics.newImage("assets/tiles/village-to-sewers.png")
+
     -- Load music
     Assets.music.theme = love.audio.newSource("assets/music/gospodintheme.wav", "stream")
     Assets.music.theme:setVolume(0.5)
