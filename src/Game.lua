@@ -15,6 +15,7 @@ local Game = {
     turnQueue = {},
     uniqueEnemiesSpawned = {},
     fovMap = {},
+    fovEnabled = true, -- New flag to control FOV
     currentTurnIndex = 1,
     mapWidth = 80,
     mapHeight = 25,
@@ -195,6 +196,18 @@ function Game.changeFloor(direction)
     Game.currentFloor = newFloorIndex
     local floorInfo = config.floorData[Game.currentFloor]
 
+    -- Update map dimensions based on the new floor's data
+    Game.mapWidth = floorInfo.width or 80
+    Game.mapHeight = floorInfo.height or 25
+    -- Reset and re-initialize FOV map for the new dimensions
+    Game.fovMap = {}
+    for y = 1, Game.mapHeight do
+        Game.fovMap[y] = {}
+        for x = 1, Game.mapWidth do
+            Game.fovMap[y][x] = 0
+        end
+    end
+
     -- 2. Check cache or generate a new floor if it's the first visit
     if not Game.floors[Game.currentFloor] then
         local generateFloor = require('src.systems.DungeonGenerator')
@@ -205,16 +218,21 @@ function Game.changeFloor(direction)
         if floorInfo.uniqueSpawns then
             for _, uniqueType in ipairs(floorInfo.uniqueSpawns) do
                 if not Game.uniqueEnemiesSpawned[uniqueType] then
-                    -- Place unique enemy in the last room for dramatic effect
-                    local room = rooms[#rooms]
-                    if room then
-                        local enemyX = room.x + math.floor((room.width - 1) / 2)
-                        local enemyY = room.y + math.floor((room.height - 1) / 2)
-                        local enemy = createEnemy(uniqueType, enemyX, enemyY)
-                        if enemy then
-                            table.insert(newEntities, enemy)
-                            Game.uniqueEnemiesSpawned[uniqueType] = true
-                        end
+                    local enemyX, enemyY
+                    if #rooms > 0 then
+                        -- Place unique enemy in the last room for dramatic effect
+                        local room = rooms[#rooms]
+                        enemyX = room.x + math.floor((room.width - 1) / 2)
+                        enemyY = room.y + math.floor((room.height - 1) / 2)
+                    else
+                        -- Fallback: If no rooms were generated, spawn in the center of the map.
+                        enemyX = math.floor(Game.mapWidth / 2)
+                        enemyY = math.floor(Game.mapHeight / 2)
+                    end
+                    local enemy = createEnemy(uniqueType, enemyX, enemyY)
+                    if enemy then
+                        table.insert(newEntities, enemy)
+                        Game.uniqueEnemiesSpawned[uniqueType] = true
                     end
                 end
             end
@@ -259,7 +277,7 @@ function Game.changeFloor(direction)
     local newPlayerX, newPlayerY
     if direction == 0 then
         -- Special case for first-time game initialization: fixed spawn point.
-        newPlayerX = 4
+        newPlayerX = 5
         newPlayerY = 3
     else
         -- Normal level transition: find the corresponding stairs
@@ -277,9 +295,18 @@ function Game.changeFloor(direction)
             local startPos = possibleStartPositions[love.math.random(1, #possibleStartPositions)]
             newPlayerX, newPlayerY = startPos.x, startPos.y
         else
-            local room = rooms[1]
-            newPlayerX = room.x + math.floor((room.width - 1) / 2)
-            newPlayerY = room.y + math.floor((room.height - 1) / 2)
+            -- Fallback: If no stairs are found, find a random walkable tile.
+            local walkableTiles = {}
+            for y = 1, Game.mapHeight do
+                for x = 1, Game.mapWidth do
+                    local tileType = type(map[y][x]) == "table" and map[y][x].type or map[y][x]
+                    if tileType == 1 or tileType == 4 then -- Floor or Town Square
+                        table.insert(walkableTiles, {x=x, y=y})
+                    end
+                end
+            end
+            local randomTile = walkableTiles[love.math.random(#walkableTiles)]
+            newPlayerX, newPlayerY = randomTile.x, randomTile.y
             GameLogSystem.logNoStairsFound()
         end
     end
@@ -294,12 +321,22 @@ function Game.changeFloor(direction)
     -- Rebuild turn queue
     Game.rebuildTurnQueue()
     Game.currentTurnIndex = 1
-
+    
     -- 6. Final updates
     Game.computeFov()
     Game.updateCamera()
     GameLogSystem.logEnterFloor(floorInfo.name)
     return true -- Indicate success
+end
+
+function Game.goToFloor(floorIndex)
+    if not config.floorData[floorIndex] then
+        GameLogSystem.logMessage("Invalid floor index: " .. floorIndex, "info")
+        return false
+    end
+    -- This is a simplified transition that doesn't look for corresponding stairs.
+    -- It's suitable for a debug warp command.
+    return Game.changeFloor(floorIndex - Game.currentFloor)
 end
 
 function Game.initialize(loadout)
@@ -315,30 +352,12 @@ function Game.initialize(loadout)
     MessageLog.clear()
 
     Game.lastLoadout = loadout -- Store the selected loadout for fast restarts
-    -- Initialize FOV and explored maps
-    Game.fovMap = {}
-    for y = 1, Game.mapHeight do
-        Game.fovMap[y] = {}
-        for x = 1, Game.mapWidth do
-            Game.fovMap[y][x] = false
-        end
-    end
 
     -- Create the player object. Its position will be set by changeFloor.
     Game.player = Player:new(0, 0, "@", {1, 1, 1}, "Player")
 
-    -- Equip starting items
-    Game.player:equip(ItemFactory.create(0, 0, "elegant_blouse"), nil, true)
-    Game.player:equip(ItemFactory.create(0, 0, "refined_pantaloons"), nil, true)
-    Game.player:equip(ItemFactory.create(0, 0, "sensible_boots"), nil, true)
-    Game.player:equip(ItemFactory.create(0, 0, "nobles_knife"), nil, true)
-
-    -- Equip the chosen loadout item
-    if loadout.implant then
-        Game.player:equip(ItemFactory.create(0, 0, loadout.implant), nil, true)
-    elseif loadout.weapon then
-        Game.player:equip(ItemFactory.create(0, 0, loadout.weapon), nil, true)
-    end
+    -- Apply the chosen loadout and starting gear
+    Game.player:applyLoadout(loadout)
     
     -- Set up the first floor by calling changeFloor with a direction of 0.
     -- This will generate the map, spawn enemies, and place the player correctly.

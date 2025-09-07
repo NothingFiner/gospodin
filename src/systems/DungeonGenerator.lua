@@ -127,7 +127,8 @@ local bspTree
 local bspRooms
 local bspCorridors
 
-local MIN_LEAF_SIZE = 12 -- The smallest a partition can be before it stops splitting.
+local MIN_LEAF_SIZE = 5 -- The smallest a partition can be before it stops splitting.
+local MAX_ASPECT_RATIO = 1.25 -- How stretched a partition can be before we force a split direction.
 
 function generators._bspSplit(container, level)
     level = level or 0
@@ -138,14 +139,23 @@ function generators._bspSplit(container, level)
     }
 
     -- Stop splitting if the container is too small or we've recursed too deep.
-    if level > 4 or (node.width < MIN_LEAF_SIZE * 2 and node.height < MIN_LEAF_SIZE * 2) then
+    if level > 6 or (node.width < MIN_LEAF_SIZE * 2 or node.height < MIN_LEAF_SIZE * 2 ) then
         return node
     end
 
+    local canSplitHorizontal = node.height >= MIN_LEAF_SIZE * 2
+    local canSplitVertical = node.width >= MIN_LEAF_SIZE * 2
+
+    if not canSplitHorizontal and not canSplitVertical then
+        return node -- Cannot be split further
+    end
+
     local splitHorizontal
-    if node.width / node.height >= 1.25 then splitHorizontal = false -- Wide container, split vertically
-    elseif node.height / node.width >= 1.25 then splitHorizontal = true -- Tall container, split horizontally
-    else splitHorizontal = love.math.random() > 0.5 end
+    if not canSplitHorizontal then splitHorizontal = false
+    elseif not canSplitVertical then splitHorizontal = true
+    elseif node.width / node.height > MAX_ASPECT_RATIO then splitHorizontal = false -- Wide, so split vertically
+    elseif node.height / node.width > MAX_ASPECT_RATIO then splitHorizontal = true -- Tall, so split horizontally
+    else splitHorizontal = love.math.random() > 0.5 end -- It's squarish, so split randomly
 
     if splitHorizontal then
         local splitY = love.math.random(MIN_LEAF_SIZE, node.height - MIN_LEAF_SIZE)
@@ -171,10 +181,11 @@ end
 
 function generators._createRoomsInLeaves(leaves)
     for _, leaf in ipairs(leaves) do
-        local roomW = love.math.random(5, leaf.width - 2)
-        local roomH = love.math.random(5, leaf.height - 2)
-        local roomX = leaf.x + love.math.random(1, leaf.width - roomW - 1)
-        local roomY = leaf.y + love.math.random(1, leaf.height - roomH - 1)
+        -- Make the room fill the entire leaf, leaving a 1-tile border for walls.
+        local roomX = leaf.x + 1
+        local roomY = leaf.y + 1
+        local roomW = leaf.width - 2
+        local roomH = leaf.height - 2
         leaf.room = {x=roomX, y=roomY, width=roomW, height=roomH}
         table.insert(bspRooms, leaf.room)
     end
@@ -203,11 +214,44 @@ function generators._createCorridors(node)
     -- If for some reason a room couldn't be found, we can't connect them.
     if not lRoom or not rRoom then return end
 
-    local p1 = {x = lRoom.x + math.floor(lRoom.width / 2), y = lRoom.y + math.floor(lRoom.height / 2)}
-    local p2 = {x = rRoom.x + math.floor(rRoom.width / 2), y = rRoom.y + math.floor(rRoom.height / 2)}
+    -- Find the minimum distance between the two rooms
+    local min_dist = math.huge
+    for x1 = lRoom.x, lRoom.x + lRoom.width - 1 do
+        for y1 = lRoom.y, lRoom.y + lRoom.height - 1 do
+            for x2 = rRoom.x, rRoom.x + rRoom.width - 1 do
+                for y2 = rRoom.y, rRoom.y + rRoom.height - 1 do
+                    local dist = (x1 - x2)^2 + (y1 - y2)^2
+                    if dist < min_dist then min_dist = dist end
+                end
+            end
+        end
+    end
 
-    for x = math.min(p1.x, p2.x), math.max(p1.x, p2.x) do table.insert(bspCorridors, {x=x, y=p1.y}) end
-    for y = math.min(p1.y, p2.y), math.max(p1.y, p2.y) do table.insert(bspCorridors, {x=p2.x, y=y}) end
+    -- Collect all pairs of points that are at the minimum distance
+    local best_points = {}
+    for x1 = lRoom.x, lRoom.x + lRoom.width - 1 do
+        for y1 = lRoom.y, lRoom.y + lRoom.height - 1 do
+            for x2 = rRoom.x, rRoom.x + rRoom.width - 1 do
+                for y2 = rRoom.y, rRoom.y + rRoom.height - 1 do
+                    local dist = (x1 - x2)^2 + (y1 - y2)^2
+                    if dist == min_dist then
+                        table.insert(best_points, {x1 = x1, y1 = y1, x2 = x2, y2 = y2})
+                    end
+                end
+            end
+        end
+    end
+
+    -- Pick one of the best points at random
+    local best = best_points[love.math.random(#best_points)]
+
+    -- Draw a straight line corridor between the two closest points
+    local x, y = best.x1, best.y1
+    while x ~= best.x2 or y ~= best.y2 do
+        table.insert(bspCorridors, {x=x, y=y})
+        if x < best.x2 then x = x + 1 elseif x > best.x2 then x = x - 1 end
+        if y < best.y2 then y = y + 1 elseif y > best.y2 then y = y - 1 end
+    end
 end
 
 function generators._generateBspMap(floorIndex, mapWidth, mapHeight)
@@ -239,8 +283,8 @@ function generators._generateBspMap(floorIndex, mapWidth, mapHeight)
     if bspTree.rightChild then generators._getLeaves(bspTree.rightChild, rightLeaves) end
     
     local leftRooms, rightRooms = {}, {}
-    for _, leaf in ipairs(leftLeaves) do if leaf.room then table.insert(leftRooms, leaf.room) end end
-    for _, leaf in ipairs(rightLeaves) do if leaf.room then table.insert(rightRooms, leaf.room) end end
+    for _, leaf in ipairs(leftLeaves) do if leaf.room then table.insert(leftRooms, leaf.room) end end -- luacheck: ignore
+    for _, leaf in ipairs(rightLeaves) do if leaf.room then table.insert(rightRooms, leaf.room) end end -- luacheck: ignore
 
     local transitions = config.floorData[floorIndex].transitions
     placeStairs(map, leftRooms, transitions.up, 0) -- Place Up stairs in the "left" partition
@@ -285,14 +329,14 @@ function generators.village(floorIndex, mapWidth, mapHeight)
         for x = math.min(p1.x, p2.x), math.max(p1.x, p2.x) do
             for w = startOffset, endOffset do
                 local y = p1.y + w
-                if x > 1 and x < mapWidth and y > 1 and y < mapHeight then map[y][x] = 1 end
+                if x > 1 and x < mapWidth and y > 1 and y < mapHeight then map[y][x] = {type = 1, variant = love.math.random(4)} end
             end
         end
         -- Carve vertical part
         for y = math.min(p1.y, p2.y), math.max(p1.y, p2.y) do
             for w = startOffset, endOffset do
                 local x = p2.x + w
-                if x > 1 and x < mapWidth and y > 1 and y < mapHeight then map[y][x] = 1 end
+                if x > 1 and x < mapWidth and y > 1 and y < mapHeight then map[y][x] = {type = 1, variant = love.math.random(4)} end
             end
         end
     end
@@ -307,29 +351,31 @@ function generators.village(floorIndex, mapWidth, mapHeight)
     local squareX, squareY = -1, -1 -- Default to invalid coords
 
     if maxSquareSize > 5 then -- Only place a square if it can be reasonably large
-        squareSize = love.math.random(5, maxSquareSize)
+        squareSize = love.math.random(math.floor(maxSquareSize * 0.5), maxSquareSize)
         squareX = love.math.random(2, quadW - squareSize - 1)
         squareY = love.math.random(2, quadH - squareSize - 1)
         for y = squareY, squareY + squareSize - 1 do
             for x = squareX, squareX + squareSize - 1 do
-                map[y][x] = 4 -- Town Square tile type
+                -- Also check bounds here for safety
+                if x > 1 and x < mapWidth and y > 1 and y < mapHeight then
+                    map[y][x] = 4 -- Town Square tile type
+                end
             end
         end
     end
 
     -- 3. Place Stairs in different quadrants
-    local transitions = config.floorData[floorIndex].transitions
+    local transitions = config.floorData[floorIndex].transitions or {}
     local quadrants = { {}, {}, {}, {} }
     
     local function isGoodStairLocation(x, y)
-        if not map[y] or map[y][x] == 0 then return false end
+        -- The most important check: is the tile a walkable floor?
+        local tile = map[y] and map[y][x]
+        local tileType = type(tile) == "table" and tile.type or tile
+        if tileType ~= 1 and tileType ~= 4 then return false end
+
+        if not map[y] or (type(map[y][x]) == "number" and map[y][x] == 0) then return false end
         if squareSize > 0 and x >= squareX and x < squareX + squareSize and y >= squareY and y < squareY + squareSize then return false end
-        for dy = -1, 1 do for dx = -1, 1 do
-            local checkY, checkX = y + dy, x + dx
-            -- Add explicit boundary checks for safety, even though the loop should handle it.
-            if checkY < 1 or checkY > mapHeight or checkX < 1 or checkX > mapWidth then return false end
-            if not map[checkY] or map[checkY][checkX] == 0 then return false end
-        end end
         return true
     end
 
@@ -346,15 +392,16 @@ function generators.village(floorIndex, mapWidth, mapHeight)
 
     for i = #quadrants, 2, -1 do local j = love.math.random(i); quadrants[i], quadrants[j] = quadrants[j], quadrants[i] end
 
-    for i = 1, transitions.up or 0 do local quad = table.remove(quadrants); if quad and #quad > 0 then local pos = quad[love.math.random(#quad)]; map[pos.y][pos.x] = 3 end end
-    for i = 1, transitions.down or 0 do local quad = table.remove(quadrants); if quad and #quad > 0 then local pos = quad[love.math.random(#quad)]; map[pos.y][pos.x] = 2 end end
+    -- Revert to the simpler placement logic
+    for i = 1, (transitions.up or 0) do if #quadrants > 0 then local quad = table.remove(quadrants, 1); if quad and #quad > 0 then local pos = quad[love.math.random(#quad)]; map[pos.y][pos.x] = 3 end end end
+    for i = 1, (transitions.down or 0) do if #quadrants > 0 then local quad = table.remove(quadrants, 1); if quad and #quad > 0 then local pos = quad[love.math.random(#quad)]; map[pos.y][pos.x] = 2 end end end
 
     -- Since this generator doesn't create traditional "rooms", we'll create one large "room"
     -- that encompasses all walkable tiles for the purpose of enemy spawning.
     local allFloorTilesAsOneRoom = {}
     for y=1, mapHeight do
         for x=1, mapWidth do
-            if map[y][x] == 1 or map[y][x] == 4 then
+            if (type(map[y][x]) == "table" and map[y][x].type == 1) or map[y][x] == 4 then
                 table.insert(allFloorTilesAsOneRoom, {x=x, y=y, width=1, height=1})
             end
         end

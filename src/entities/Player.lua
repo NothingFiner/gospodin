@@ -28,9 +28,11 @@ function Player:new(x, y, char, color, name)
     player.baseCritChance = 5 -- Base 5% crit chance
     player.baseCritDamageBonus = 100 -- Base 100% bonus damage (double)
 
+    -- Implant slots are separate and permanent
+    player.implants = {nil, nil}
+
     -- Equipment slots
     player.equipment = {
-        [C.EquipmentSlot.IMPLANT] = nil,
         [C.EquipmentSlot.HEAD] = nil,
         [C.EquipmentSlot.CHEST] = nil,
         [C.EquipmentSlot.HANDS] = nil,
@@ -43,18 +45,19 @@ function Player:new(x, y, char, color, name)
     player.abilities = {}
     player.allAbilities = {} -- New table to hold all abilities, including hidden ones
     player.abilityCooldowns = {}
+    player.abilityCharges = {}
     player.selectedAbilityIndex = 1
     player.perks = {}
 
     player.sprite = require('src.assets').sprites.player
 
     setmetatable(player, self)
-    player:recalculateStats() -- Initial stat calculation
+    player:initializeStats() -- New initial stat setup
     return player
 end
 
-function Player:recalculateStats()
-    -- Start with base stats
+function Player:initializeStats()
+    -- This function sets the derived stats equal to the base stats at creation.
     self.maxHealth = config.playerStats.baseHealth
     self.maxActionPoints = config.playerStats.baseActionPoints
     self.strength = self.baseStrength
@@ -62,103 +65,46 @@ function Player:recalculateStats()
     self.intelligence = self.baseIntelligence
     self.dodge = self.baseDodge
     self.armor = self.baseArmor
-    self.weapon = nil -- Reset weapon, abilities will handle attacks
     self.critChance = self.baseCritChance
     self.critDamageBonus = self.baseCritDamageBonus
-    self.damage = {min = 1, max = 2} -- Base unarmed damage
-    self.abilities = {} -- Reset abilities
-    self.allAbilities = {} -- Reset all abilities
-    self.selectedAbilityIndex = 1 -- Reset selected ability
+    self.damage = {min = 1, max = 2}
+    self.conditionalBonuses = {}
+    self.immunities = {}
 
-    -- Apply perk effects before equipment
-    for _, perk in ipairs(self.perks) do
-        for _, effect in ipairs(perk.effects) do
-            if effect.type == "stat" then
-                if effect.stat == "health" then self.maxHealth = self.maxHealth + effect.value
-                elseif effect.stat == "strength" then self.strength = self.strength + effect.value
-                elseif effect.stat == "dexterity" then self.dexterity = self.dexterity + effect.value
-                elseif effect.stat == "intelligence" then self.intelligence = self.intelligence + effect.value
-                elseif effect.stat == "dodge" then self.dodge = self.dodge + effect.value
-                elseif effect.stat == "critChance" then self.critChance = self.critChance + effect.value
-                elseif effect.stat == "damage" then
-                    self.damage.min = self.damage.min + effect.value.min
-                    self.damage.max = self.damage.max + effect.value.max
-                end
-            elseif effect.type == "modify_ability" then
-                -- Find the ability in the config and modify it before it gets added to the player
-                local abilityToModify = config.abilities[effect.ability]
-                if abilityToModify then
-                    abilityToModify[effect.property] = (abilityToModify[effect.property] or 0) + effect.value
-                end
-            end
-        end
+    -- Add the permanent basic attack ability
+    local basicAttack = deepcopy(config.abilities.basic_attack)
+    self.allAbilities["basic_attack"] = basicAttack
+end
+
+function Player:applyLoadout(loadout)
+    -- This is called once at the start of the game.
+    local ItemFactory = require('src.entities.Item')
+
+    -- 1. Apply implant (permanent)
+    if loadout.implant then
+        local implant = ItemFactory.create(0, 0, loadout.implant)
+        self.implants[1] = implant
+        self:_applyItemModifiers(implant)
     end
 
-    -- Apply modifiers from all equipped items
-    for slot, item in pairs(self.equipment) do
-        if item then
-            for stat, value in pairs(item.modifiers) do
-                if stat == "health" then self.maxHealth = self.maxHealth + value
-                elseif stat == "actionPoints" then self.maxActionPoints = self.maxActionPoints + value
-                elseif stat == "strength" then self.strength = self.strength + value
-                elseif stat == "dexterity" then self.dexterity = self.dexterity + value
-                elseif stat == "intelligence" then self.intelligence = self.intelligence + value
-                elseif stat == "dodge" then self.dodge = self.dodge + value
-                elseif stat == "armor" then self.armor = self.armor + value
-                elseif stat == "damage" then
-                    self.damage.min = (self.damage.min or 0) + (value.min or 0)
-                    self.damage.max = (self.damage.max or 0) + (value.max or 0)
-                elseif stat == "critChance" then self.critChance = self.critChance + value
-                elseif stat == "critDamage" then self.critDamageBonus = self.critDamageBonus + value -- For now, we assume the bonus is a table {min, max}
-                end
-            end
-
-            -- Add abilities from item
-            if item.itemData.abilities then
-                for _, abilityKey in ipairs(item.itemData.abilities) do
-                    local ability = deepcopy(config.abilities[abilityKey])
-                    if ability then
-                        -- Add the key to the ability table for reference
-                        ability.key = abilityKey
-                        table.insert(self.allAbilities, ability) -- Add to the master list
-                        if not ability.hidden then
-                            table.insert(self.abilities, ability) -- Add to the selectable list
-                        end
-                    end
-                end
-            end
-        end
+    -- 2. Apply starting weapon (temporary, but part of initial loadout)
+    if loadout.weapon then
+        local weapon = ItemFactory.create(0, 0, loadout.weapon)
+        self:equip(weapon, C.EquipmentSlot.WEAPON1, true)
     end
 
-    -- Add abilities from perks
-    for _, perk in ipairs(self.perks) do
-        for _, effect in ipairs(perk.effects) do
-            if effect.type == "add_ability" then
-                local ability = deepcopy(config.abilities[effect.ability])
-                if ability then
-                    ability.key = effect.ability
-                    table.insert(self.allAbilities, ability)
-                    if not ability.hidden then table.insert(self.abilities, ability) end
-                end
-            end
-        end
-    end
+    -- 3. Apply other starting gear
+    self:equip(ItemFactory.create(0, 0, "elegant_blouse"), nil, true)
+    self:equip(ItemFactory.create(0, 0, "refined_pantaloons"), nil, true)
+    self:equip(ItemFactory.create(0, 0, "sensible_boots"), nil, true)
+    self:equip(ItemFactory.create(0, 0, "nobles_knife"), nil, true)
 
-    -- Add the default basic attack ability
-    local basicAttack = config.abilities.basic_attack
-    basicAttack.key = "basic_attack"
-    table.insert(self.allAbilities, 1, basicAttack) -- Add to master list, but not selectable list
-
-    -- Ensure health doesn't exceed new maxHealth
-    self.health = math.min(self.health, self.maxHealth)
-
-    -- Top off health and AP after calculation
+    -- 4. Finalize stats
     self.health = self.maxHealth
     self.actionPoints = self.maxActionPoints
 end
 
 function Player:equip(item, slot, silent)
-    -- If a slot is provided, use it. Otherwise, use the item's default slot.
     local targetSlot = slot or item.slot
 
     -- Special handling for weapons: if weapon1 is taken, try weapon2
@@ -171,13 +117,13 @@ function Player:equip(item, slot, silent)
         self:unequip(targetSlot)
     end
 
-    -- Place the new item in the slot
+    -- Place the new item in the slot and apply its modifiers
     self.equipment[targetSlot] = item
+    self:_applyItemModifiers(item)
+
     if not silent then
         GameLogSystem.logMessage("You equip the " .. item.name .. ".", "info")
     end
-
-    self:recalculateStats()
 end
 
 function Player:unequip(slot)
@@ -185,8 +131,98 @@ function Player:unequip(slot)
     if item then
         self.equipment[slot] = nil
         table.insert(self.inventory, item) -- Return item to inventory
+        self:_removeItemModifiers(item)
         GameLogSystem.logMessage("You unequip the " .. item.name .. ".", "info")
-        self:recalculateStats()
+    end
+end
+
+-- Dispatch table for applying/removing stat modifiers from items
+local statModifiers = {
+    health = function(player, value)
+        player.maxHealth = player.maxHealth + value
+        if value > 0 then player.health = player.health + value end 
+        if player.health > player.maxHealth then player.health = player.maxHealth end 
+
+    end,
+    actionPoints = function(player, value) player.maxActionPoints = player.maxActionPoints + value end,
+    strength = function(player, value) player.strength = player.strength + value end,
+    dexterity = function(player, value) player.dexterity = player.dexterity + value end,
+    intelligence = function(player, value) player.intelligence = player.intelligence + value end,
+    dodge = function(player, value) player.dodge = player.dodge + value end,
+    armor = function(player, value) player.armor = player.armor + value end,
+    damage = function(player, value)
+        player.damage.min = (player.damage.min or 0) + (value.min or 0)
+        player.damage.max = (player.damage.max or 0) + (value.max or 0)
+    end,
+    critChance = function(player, value) player.critChance = player.critChance + value end,
+    critDamage = function(player, value) player.critDamageBonus = player.critDamageBonus + value end
+}
+
+function Player:_applyItemModifiers(item)
+    -- Add stat modifiers
+    for stat, value in pairs(item.modifiers or {}) do
+        local modifierFunc = statModifiers[stat]
+        if modifierFunc then modifierFunc(self, value) end
+    end
+    -- Add abilities
+    if item.itemData.abilities then
+        for _, key in ipairs(item.itemData.abilities) do
+            local ability = deepcopy(config.abilities[key])
+            ability.key = key
+            self.allAbilities[key] = ability
+            if not ability.hidden then table.insert(self.abilities, self.allAbilities[key]) end
+        end
+    end
+end
+
+function Player:_removeItemModifiers(item)
+    -- Remove stat modifiers
+    for stat, value in pairs(item.modifiers or {}) do
+        local modifier = statModifiers[stat]
+        if type(modifier) == "table" and modifier.remove then
+            modifier.remove(self, value)
+        elseif type(modifier) == "function" then
+            modifier(self, -value)
+        end
+    end
+    -- Remove abilities
+    if item.itemData.abilities then
+        for _, keyToRemove in ipairs(item.itemData.abilities) do
+            self.allAbilities[keyToRemove] = nil
+            for i = #self.abilities, 1, -1 do if self.abilities[i].key == keyToRemove then table.remove(self.abilities, i) end end
+        end
+    end
+end
+
+-- Dispatch table for applying perk effects
+local perkEffects = {
+    stat = function(player, effect)
+        if effect.stat == "health" then player.maxHealth = player.maxHealth + effect.value; player.health = player.health + effect.value
+        elseif effect.stat == "strength" then player.baseStrength = player.baseStrength + effect.value; player.strength = player.strength + effect.value
+        elseif effect.stat == "dexterity" then player.baseDexterity = player.baseDexterity + effect.value; player.dexterity = player.dexterity + effect.value
+        elseif effect.stat == "intelligence" then player.baseIntelligence = player.baseIntelligence + effect.value; player.intelligence = player.intelligence + effect.value
+        elseif effect.stat == "dodge" then player.baseDodge = player.baseDodge + effect.value; player.dodge = player.dodge + effect.value
+        end
+    end,
+    modify_ability = function(player, effect)
+        local abilityToModify = player.allAbilities[effect.ability]
+        if abilityToModify then
+            abilityToModify[effect.property] = (abilityToModify[effect.property] or 0) + effect.value
+        end
+    end,
+    add_ability = function(player, effect)
+        local ability = deepcopy(config.abilities[effect.ability])
+        ability.key = effect.ability
+        player.allAbilities[effect.ability] = ability
+        if not ability.hidden then table.insert(player.abilities, ability) end
+    end
+}
+
+function Player:addPerk(perk)
+    table.insert(self.perks, perk)
+    for _, effect in ipairs(perk.effects) do
+        local effectFunc = perkEffects[effect.type]
+        if effectFunc then effectFunc(self, effect) end
     end
 end
 
@@ -230,6 +266,14 @@ function Player:useAbility(ability, target)
         return false
     end
 
+    -- Check for charges if the ability uses them
+    if ability.charges then
+        if not self.abilityCharges[ability.key] or self.abilityCharges[ability.key] <= 0 then
+            GameLogSystem.logMessage(ability.name .. " has no charges left.", "info")
+            return false
+        end
+    end
+
     -- 2. Check Cooldown
     if self.abilityCooldowns[ability.key] and self.abilityCooldowns[ability.key] > 0 then
         GameLogSystem.logOnCooldown(ability.name, self.abilityCooldowns[ability.key])
@@ -245,6 +289,10 @@ function Player:useAbility(ability, target)
         self.y = target.y
         GameLogSystem.logMessage("You leap through space.", "info")
         success = true
+    elseif ability.effect == "heal" then
+        self.health = math.min(self.maxHealth, self.health + ability.amount)
+        GameLogSystem.logMessage("You heal for " .. ability.amount .. " health.", "player_attack")
+        success = true
     end
 
     -- 4. Finalize if successful
@@ -252,6 +300,9 @@ function Player:useAbility(ability, target)
         self.actionPoints = self.actionPoints - ability.apCost
         if ability.cooldown > 0 then
             self:setCooldown(ability.key, ability.cooldown)
+        end
+        if ability.charges then
+            self.abilityCharges[ability.key] = self.abilityCharges[ability.key] - 1
         end
     end
 
@@ -269,14 +320,8 @@ function Player:useItem(item)
     local Consumable = require('src.entities.Consumable')
     local Equipment = require('src.entities.Equipment')
 
-    if is_a(item, Consumable) then
-        -- The item's use() method returns true on success, and we consume the item.
-        return item:use(self)
-    elseif is_a(item, Equipment) then
-        -- Equipping the item. This action is successful, and the item will be "consumed" from the inventory.
-        self:equip(item)
-        return true
-    end
+    if is_a(item, Consumable) then return item:use(self)
+    elseif is_a(item, Equipment) then self:equip(item); return true end
 
     return false -- Item is neither consumable nor equippable
 end
@@ -296,6 +341,13 @@ function Player:levelUp()
     self.level = self.level + 1
     self.xp = self.xp - self.xpToNextLevel
     self.xpToNextLevel = self.level * config.playerStats.xpPerLevel
+
+    -- Restore charges on abilities that have them
+    for key, ability in pairs(self.allAbilities) do
+        if ability.maxCharges then
+            self.abilityCharges[ability.key] = ability.maxCharges
+        end
+    end
 end
 
 return Player

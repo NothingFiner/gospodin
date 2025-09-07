@@ -15,7 +15,9 @@ local colors = {
     -- HEX: #78585B
     dark_mauve = {0.47, 0.35, 0.36},
     -- HEX: #9C853E
-    dark_khaki = {0.61, 0.52, 0.24}
+    dark_khaki = {0.61, 0.52, 0.24},
+    -- HEX: #a30000
+    manor_red = {0.64, 0, 0}
 }
 
 return colors

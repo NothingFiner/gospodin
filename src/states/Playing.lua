@@ -19,6 +19,9 @@ function PlayingState:new(changeState)
         isUsingAbility = false, -- Specific flag for when targeting is for an ability
         inventoryMode = false,
         selectedItemIndex = 1,
+        debugConsoleMode = false,
+        selectedDebugOption = 1,
+        debugSubMenu = nil, -- For sub-menus like floor selection
         cursor = {x = 0, y = 0},
         showKeymap = false,
         fadingMusic = false,
@@ -100,12 +103,13 @@ function PlayingState:draw()
 	-- 1. Draw the world (map and entities)
 	if Game.floors[Game.currentFloor] then
 		local map = Game.floors[Game.currentFloor].map
+		local floorInfo = config.floorData[Game.currentFloor]
 		-- Draw map tiles
 		for y = 1, Game.mapHeight do
 			for x = 1, Game.mapWidth do
 				local screenX = mapX + (x - Game.camera.x) * Game.tileSize
 				local screenY = mapY + (y - Game.camera.y) * Game.tileSize
-				local visibility = Game.fovMap[y] and Game.fovMap[y][x] or 0
+				local visibility = (Game.fovEnabled and Game.fovMap[y] and Game.fovMap[y][x]) or 1
 				local isVisible = visibility > 0
 				local isExplored = Game.floors[Game.currentFloor].exploredMap[y] and Game.floors[Game.currentFloor].exploredMap[y][x]
 
@@ -115,41 +119,78 @@ function PlayingState:draw()
 					wall = {0.3, 0.3, 0.3}   -- Default gray wall
 				}
 
+				local tileSprite = nil
+				local tileType = type(map[y][x]) == "table" and map[y][x].type or map[y][x]
+
+				if floorInfo.name == "Village Streets" and tileType == 1 then
+					local variant = map[y][x].variant
+					if variant == 1 then tileSprite = Assets.sprites.village_floor
+					elseif variant == 2 then tileSprite = Assets.sprites.village_floor_1
+					elseif variant == 3 then tileSprite = Assets.sprites.village_floor_2
+					elseif variant == 4 then tileSprite = Assets.sprites.village_floor_3
+					end
+				end
+
 				if isVisible then
 					-- Draw visible tiles with full brightness
 					local r, g, b = 0, 0, 0
-					if map[y][x] == 4 then r, g, b = unpack(floorColors.town_square or floorColors.floor) -- Use town_square color if available, otherwise fallback to floor
-					elseif map[y][x] == 0 then r, g, b = unpack(floorColors.wall) -- Wall color
-					else r, g, b = unpack(floorColors.floor) end -- Default floor color
+					if tileType == 4 then r, g, b = unpack(floorColors.town_square or floorColors.floor)
+					elseif tileType == 0 then r, g, b = unpack(floorColors.wall)
+					else r, g, b = unpack(floorColors.floor) end
+
+					-- Special wall color for manor transitions in the village
+					if floorInfo.name == "Village Streets" and map[y][x] == 0 then
+						-- Check if adjacent tile is stairs to the manor (up)
+						if (map[y+1] and map[y+1][x] == 3) or (map[y-1] and map[y-1][x] == 3) or
+						   (map[y][x+1] == 3) or (map[y][x-1] == 3) then
+							r, g, b = unpack(require('src.colors').dark_khaki)
+						end
+					end
+
 					love.graphics.setColor(r * visibility, g * visibility, b * visibility)
-					love.graphics.rectangle("fill", screenX, screenY, Game.tileSize, Game.tileSize)
+					if tileSprite then love.graphics.draw(tileSprite, screenX, screenY)
+					else love.graphics.rectangle("fill", screenX, screenY, Game.tileSize, Game.tileSize) end
 				elseif isExplored then
 					-- Draw explored but not visible tiles dimly
 					local r, g, b = 0, 0, 0
-					if map[y][x] == 4 then r, g, b = unpack(floorColors.town_square or floorColors.floor) -- Use town_square color if available, otherwise fallback to floor
-					elseif map[y][x] == 0 then r, g, b = unpack(floorColors.wall) -- Wall color
-					else r, g, b = unpack(floorColors.floor) end -- Default floor color
+					if tileType == 4 then r, g, b = unpack(floorColors.town_square or floorColors.floor)
+					elseif tileType == 0 then r, g, b = unpack(floorColors.wall)
+					else r, g, b = unpack(floorColors.floor) end
 					love.graphics.setColor(r * 0.3, g * 0.3, b * 0.3) -- Dimmed version of the floor's specific color
-					love.graphics.rectangle("fill", screenX, screenY, Game.tileSize, Game.tileSize)
+					if tileSprite then love.graphics.draw(tileSprite, screenX, screenY)
+					else love.graphics.rectangle("fill", screenX, screenY, Game.tileSize, Game.tileSize) end
 				else
 					-- If not explored, it's just black
 					love.graphics.setColor(0,0,0) -- Undiscovered
 					love.graphics.rectangle("fill", screenX, screenY, Game.tileSize, Game.tileSize)
 				end
 
-				-- Draw stairs
-				if (isVisible or isExplored) and (map[y][x] == 2 or map[y][x] == 3) then
-					local char = (map[y][x] == 2) and ">" or "<"
-					local ox, oy = getCenteredOffsets(char)
-					love.graphics.setColor(visibility, visibility, visibility)
-					love.graphics.print(char, screenX + ox, screenY + oy)
+				-- Draw stairs with sprites
+				if (isVisible or isExplored) then
+					local stairSprite = nil
+					if tileType == 2 then -- Down stairs
+						if floorInfo.name:find("Manor") then stairSprite = Assets.sprites.manor_stairs_down
+						elseif floorInfo.name == "Village Streets" then stairSprite = Assets.sprites.village_to_sewers end
+					elseif tileType == 3 then -- Up stairs
+						if floorInfo.name:find("Manor") then stairSprite = Assets.sprites.manor_stairs_up end
+					end
+
+					if stairSprite then
+						love.graphics.setColor(visibility, visibility, visibility)
+						love.graphics.draw(stairSprite, screenX, screenY)
+					elseif tileType == 2 or tileType == 3 then -- Fallback for other stairs
+						local char = (tileType == 2) and ">" or "<"
+						local ox, oy = getCenteredOffsets(char)
+						love.graphics.setColor(visibility, visibility, visibility)
+						love.graphics.print(char, screenX + ox, screenY + oy)
+					end
 				end
 			end
 		end
 
 		-- Draw entities
 		for _, entity in ipairs(Game.entities) do
-			local visibility = Game.fovMap[entity.y] and Game.fovMap[entity.y][entity.x] or 0
+			local visibility = (Game.fovEnabled and Game.fovMap[entity.y] and Game.fovMap[entity.y][entity.x]) or 1
 			if visibility > 0 then
 				local screenX = mapX + (entity.x - Game.camera.x) * Game.tileSize
 				local screenY = mapY + (entity.y - Game.camera.y) * Game.tileSize
@@ -175,7 +216,8 @@ function PlayingState:draw()
             local hasLOS = Game.fovMap[self.cursor.y] and Game.fovMap[self.cursor.y][self.cursor.x]
             local map = Game.floors[Game.currentFloor].map
             local tile = map[self.cursor.y] and map[self.cursor.y][self.cursor.x]
-            local isWall = tile == 0
+            local tileType = type(tile) == "table" and tile.type or tile
+            local isWall = tileType == 0
 
             if not ability or dist > ability.range or not hasLOS or isWall then
                 cursorColor = {1, 0.2, 0.2} -- Red for invalid target (out of range, no LoS, or wall)
@@ -244,6 +286,11 @@ function PlayingState:draw()
     if self.showKeymap then
         GameUI.drawKeymap()
     end
+
+    -- Draw debug console overlay
+    if self.debugConsoleMode then
+        GameUI.drawDebugConsole(self)
+    end
 end
 
 function PlayingState:update(dt)
@@ -308,6 +355,8 @@ function PlayingState:keypressed(key)
             self.multiTargetData = nil -- Cancel multi-targeting
         elseif self.isPaused then
             self.isPaused = false
+        elseif self.debugConsoleMode then
+            self.debugConsoleMode = false
         else
             -- If no other menu is open, open the pause menu
             self.isPaused = true
@@ -432,6 +481,38 @@ function PlayingState:keypressed(key)
                 GameLogSystem.logCannotUseItem()
             end
         end
+    elseif self.debugConsoleMode then
+        local options = self.debugSubMenu and self.debugSubMenu.options or {"Add 100 XP", "Warp to Floor", "Toggle FOV"}
+        if key == 'w' or key == 'up' then self.selectedDebugOption = math.max(1, self.selectedDebugOption - 1)
+        elseif key == 's' or key == 'down' then self.selectedDebugOption = math.min(#options, self.selectedDebugOption + 1)
+        elseif key == 'return' then
+            if self.debugSubMenu then
+                -- Handle sub-menu action (warping)
+                local floorIndex = self.debugSubMenu.options[self.selectedDebugOption].index
+                Game.goToFloor(floorIndex)
+                self.debugConsoleMode = false
+                self.debugSubMenu = nil
+            else
+                -- Handle main menu action
+                local command = options[self.selectedDebugOption]
+                if command == "Add 100 XP" then
+                    if Game.player:giveXP(100) then
+                        self.changeState(config.GameState.LEVEL_UP)
+                    end
+                    self.debugConsoleMode = false
+                elseif command == "Warp to Floor" then
+                    -- Open the floor selection sub-menu
+                    self.debugSubMenu = { options = {} }
+                    for i, floorData in ipairs(config.floorData) do
+                        table.insert(self.debugSubMenu.options, {name = floorData.name, index = i})
+                    end
+                    self.selectedDebugOption = 1
+                elseif command == "Toggle FOV" then
+                    Game.fovEnabled = not Game.fovEnabled
+                    Game.computeFov() -- Recompute to update explored areas if needed
+                end
+            end
+        end
     else
         -- Normal gameplay input
         local currentEntity = Game.getCurrentEntity()
@@ -482,6 +563,8 @@ function PlayingState:keypressed(key)
             self:startInventory()
         elseif key == 'q' then
             Game.player:switchActiveWeapon()
+        elseif key == '`' then
+            self.debugConsoleMode = not self.debugConsoleMode
         elseif key == 'k' then
             self.showKeymap = true
         elseif key == 'f' then -- Use selected ability

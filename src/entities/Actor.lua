@@ -103,7 +103,17 @@ function Actor:_resolveAttack(target, ability)
     local baseDamage, isCrit = 0, false
 
     -- Critical Hit Check
-    local critChance = self.critChance or 5 -- Default 5% for enemies
+    local critChance = self.critChance or 5 -- Start with base crit chance
+    if self.isPlayer and self.conditionalBonuses and self.conditionalBonuses.critChance then
+        for _, bonus in ipairs(self.conditionalBonuses.critChance) do
+            -- Check for Sharpshooter's "ranged" condition
+            if bonus.condition == "ranged" and ability and ability.effect == "ranged_attack" then
+                critChance = critChance + bonus.value
+            end
+            -- Other conditions could be added here with 'elseif'
+        end
+    end
+
     if love.math.random(100) <= critChance then
         isCrit = true
     end

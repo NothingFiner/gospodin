@@ -66,11 +66,18 @@ function LevelUpState:generatePerkChoices()
             end
 
             if perkData.prereq_implant then
-                local implant = Game.player.equipment[C.EquipmentSlot.IMPLANT]
-                -- The item's key is stored in its itemData.name, but we need to convert it to the snake_case key.
-                -- A better approach would be to store the key on the item itself. For now, this works.
-                local implantKey = implant and string.lower(implant.name:gsub(" ", "_"))
-                if not implant or implantKey ~= perkData.prereq_implant then
+                local hasRequiredImplant = false
+                for _, implant in ipairs(Game.player.implants) do
+                    if implant then
+                        -- The item's key is stored in its itemData.name, but we need to convert it to the snake_case key.
+                        local implantKey = string.lower(implant.name:gsub(" ", "_"))
+                        if implantKey == perkData.prereq_implant then
+                            hasRequiredImplant = true
+                            break
+                        end
+                    end
+                end
+                if not hasRequiredImplant then
                     meetsAllPrereqs = false
                 end
             end
@@ -102,11 +109,10 @@ function LevelUpState:applyChanges()
     -- Apply perk
     local chosenPerk = self.perkPool[self.selectedPerkIndex]
     if chosenPerk then
-        table.insert(Game.player.perks, chosenPerk)
+        Game.player:addPerk(chosenPerk)
     end
 
     -- Finalize
-    Game.player:recalculateStats()
     require('src.systems.GameLogSystem').logLevelUp(Game.player.level)
     self.changeState(config.GameState.PLAYING)
 end

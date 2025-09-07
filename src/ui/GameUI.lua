@@ -7,7 +7,7 @@ local MessageLog = require('src.ui.MessageLog')
 local GameUI = {}
 -- Make slotOrder accessible to PlayingState
 local C = require('src.constants')
-GameUI.slotOrder = {C.EquipmentSlot.IMPLANT, C.EquipmentSlot.HEAD, C.EquipmentSlot.CHEST, C.EquipmentSlot.HANDS, C.EquipmentSlot.LEGS, C.EquipmentSlot.FEET, C.EquipmentSlot.WEAPON1, C.EquipmentSlot.WEAPON2}
+GameUI.slotOrder = {C.EquipmentSlot.HEAD, C.EquipmentSlot.CHEST, C.EquipmentSlot.HANDS, C.EquipmentSlot.LEGS, C.EquipmentSlot.FEET, C.EquipmentSlot.WEAPON1, C.EquipmentSlot.WEAPON2}
 
 
 function GameUI.draw(playingState)
@@ -104,6 +104,10 @@ function GameUI.draw(playingState)
             local cooldown = Game.player.abilityCooldowns[ability.key]
             if cooldown and cooldown > 0 then
                 abilityText = string.format("%s [CD: %d]", ability.name, cooldown)
+            elseif ability.charges then
+                local charges = Game.player.abilityCharges[ability.key] or 0
+                local maxCharges = ability.maxCharges or ability.charges
+                abilityText = string.format("%s [%d/%d]", ability.name, charges, maxCharges)
             end
             love.graphics.printf(abilityText, abilityBarX, abilityBarY, abilityBarW, "center")
             love.graphics.printf("(F) Use Ability | (V) Next Ability", abilityBarX, abilityBarY, abilityBarW, "right")
@@ -272,6 +276,44 @@ function GameUI.drawPauseMenu(playingState)
 
     -- Reset font
     love.graphics.setFont(require('src.assets').fonts.hostGroteskRegular)
+end
+
+function GameUI.drawDebugConsole(playingState)
+    local screenW, screenH = love.graphics.getWidth(), love.graphics.getHeight()
+    local panelW, panelH = screenW * 0.3, screenH * 0.4
+    local panelX, panelY = (screenW - panelW) / 2, (screenH - panelH) / 2
+
+    -- Draw panel background
+    love.graphics.setColor(0.1, 0.1, 0.15, 0.95)
+    love.graphics.rectangle("fill", panelX, panelY, panelW, panelH)
+    love.graphics.setColor(0.8, 0.8, 0.9)
+    love.graphics.setLineWidth(2)
+    love.graphics.rectangle("line", panelX, panelY, panelW, panelH)
+
+    -- Title
+    love.graphics.setColor(1,1,1)
+    love.graphics.printf("Debug Console", panelX, panelY + 20, panelW, "center")
+
+    -- List options
+    local listX = panelX + 20
+    local listY = panelY + 60
+    local listW = panelW - 40
+    local options
+
+    if playingState.debugSubMenu then
+        love.graphics.printf("Select Floor:", listX, listY, listW, "left")
+        listY = listY + 20
+        options = playingState.debugSubMenu.options
+    else
+        options = {"Add 100 XP", "Warp to Floor", "Toggle FOV"}
+    end
+
+    for i, option in ipairs(options) do
+        local text = type(option) == "table" and option.name or option
+        local color = (i == playingState.selectedDebugOption) and {1, 1, 0} or {0.7, 0.7, 0.7}
+        love.graphics.setColor(color)
+        love.graphics.printf(text, listX, listY + (i-1) * 30, listW, "left")
+    end
 end
 
 return GameUI

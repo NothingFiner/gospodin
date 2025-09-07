@@ -8,6 +8,12 @@ local StatusEffectSystem = {}
 function StatusEffectSystem.apply(target, effect)
     if not target or not target.statusEffects then return end
 
+    -- Check for immunities before applying the effect
+    if target.immunities and target.immunities[effect.type] then
+        GameLogSystem.logMessage("You resist the " .. effect.type .. " effect!", "info")
+        return
+    end
+
     -- For stackable effects like poison, add to existing duration.
     if target.statusEffects[effect.type] and effect.stackable then
         target.statusEffects[effect.type].duration = target.statusEffects[effect.type].duration + effect.duration

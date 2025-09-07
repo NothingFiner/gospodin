@@ -15,38 +15,38 @@ config.GameState = {
 
 -- Floor definitions
 config.floorData = {
-    {name = "Audience Room",                generator = "audience_chamber", transitions = {down = 1}, enemies = {"infected_servant"},
+    {name = "Audience Room",                generator = "audience_chamber", width = 40, height = 20, transitions = {down = 1}, enemies = {"infected_servant"},
         colors = {
-            floor = {0.4, 0.3, 0.25},
+            floor = require('src.colors').manor_red,
             wall = {0.2, 0.15, 0.12}
         }
     },
-    {name = "Burmestor's Manor: Apartments", generator = "manor",            transitions = {up = 1, down = 2}, enemies = {"guard", "infected_servant"},
+    {name = "Burmestor's Manor: Apartments", generator = "manor",            width = 80, height = 25, transitions = {up = 1, down = 2}, enemies = {"guard", "infected_servant"},
         colors = {
-            floor = {0.5, 0.4, 0.3},
+            floor = require('src.colors').manor_red,
             wall = {0.3, 0.2, 0.15}
         }
     },
-    {name = "Burmestor's Manor: Ground Floor", generator = "manor",            transitions = {up = 2, down = 1}, enemies = {"guard"}, uniqueSpawns = {"burmestors_daughter"},
+    {name = "Burmestor's Manor: Ground Floor", generator = "manor",            width = 80, height = 25, transitions = {up = 2, down = 1}, enemies = {"guard"}, uniqueSpawns = {"burmestors_daughter"},
         colors = {
-            floor = {0.6, 0.5, 0.4},
+            floor = require('src.colors').manor_red,
             wall = {0.4, 0.3, 0.2}
         }
     },
-    {name = "Village Streets",              generator = "village",          transitions = {up = 1, down = 2}, enemies = {"thug", "watchman"},
+    {name = "Village Streets",              generator = "village",          width = 100, height = 30, transitions = {up = 1, down = 2}, enemies = {"thug", "watchman"},
         colors = {
             floor = {0.5, 0.5, 0.45}, -- Cobblestone
             wall = {0.4, 0.35, 0.3}, -- Building walls
             town_square = {0.6, 0.6, 0.55}
         }
     },
-    {name = "Dark Sewers",                  generator = "default",          transitions = {up = 2, down = 1}, enemies = {"rat", "sewer_dweller"},
+    {name = "Dark Sewers",                  generator = "default",          width = 80, height = 25, transitions = {up = 2, down = 1}, enemies = {"rat", "sewer_dweller"},
         colors = {
             floor = {0.3, 0.4, 0.3}, -- Mossy floor
             wall = {0.2, 0.3, 0.2}  -- Damp wall
         }
     },
-    {name = "Alien Lair",                   generator = "default",          transitions = {up = 1, down = 0}, enemies = {"alien_drone"}, uniqueSpawns = {"alien_patriarch"},
+    {name = "Alien Lair",                   generator = "default",          width = 80, height = 25, transitions = {up = 1, down = 0}, enemies = {"alien_drone"}, uniqueSpawns = {"alien_patriarch"},
         colors = {
             floor = {0.4, 0.3, 0.4}, -- Purple-ish organic floor
             wall = {0.3, 0.2, 0.3}  -- Dark fleshy wall
@@ -164,7 +164,9 @@ config.abilities = {
         apCost = 2,
         cooldown = 0,
         effect = "heal",
-        amount = 10
+        amount = 10,
+        charges = 2,
+        maxCharges = 2
     },
     toxic_strike = {
         name = "Toxic Strike",
@@ -232,12 +234,12 @@ config.items = {
         }
     },
 
-    -- === EQUIPMENT: IMPLANTS ===
+    -- === IMPLANTS (now treated as items for creation purposes) ===
     nanite_cloud_array = {
         type = C.ItemType.EQUIPMENT,
         name = "Nanite Cloud Array",
+        slot = C.EquipmentSlot.IMPLANT, -- This identifies it as an implant
         char = "*", color = {0.7, 0.7, 0.9},
-        slot = C.EquipmentSlot.IMPLANT,
         modifiers = {
             health = 10, actionPoints = 1, dodge = 5, armor = -1
         },
@@ -246,8 +248,8 @@ config.items = {
     war_gecko = {
         type = C.ItemType.EQUIPMENT,
         name = "War Gecko",
+        slot = C.EquipmentSlot.IMPLANT, -- This identifies it as an implant
         char = "*", color = {0.4, 0.8, 0.4},
-        slot = C.EquipmentSlot.IMPLANT,
         modifiers = {
             health = 30, actionPoints = 2, dodge = -5, armor = 2
         },
