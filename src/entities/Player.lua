@@ -154,7 +154,7 @@ local statModifiers = {
         player.damage.min = (player.damage.min or 0) + (value.min or 0)
         player.damage.max = (player.damage.max or 0) + (value.max or 0)
     end,
-    critChance = function(player, value) player.critChance = player.critChance + value end,
+    critChance = function(player, value) player.critChance = (player.critChance or 0) + value end,
     critDamage = function(player, value) player.critDamageBonus = player.critDamageBonus + value end
 }
 
@@ -293,6 +293,27 @@ function Player:useAbility(ability, target)
         self.health = math.min(self.maxHealth, self.health + ability.amount)
         GameLogSystem.logMessage("You heal for " .. ability.amount .. " health.", "player_attack")
         success = true
+    elseif ability.effect == "reload_ability" then
+        local targetAbilityKey = ability.targetAbility
+        if self.abilityCharges[targetAbilityKey] and self.abilityCharges[targetAbilityKey] < self.allAbilities[targetAbilityKey].maxCharges then
+            self.abilityCharges[targetAbilityKey] = self.abilityCharges[targetAbilityKey] + 1
+            GameLogSystem.logMessage("You reload your " .. self.allAbilities[targetAbilityKey].name .. ".", "info")
+            success = true
+        else
+            GameLogSystem.logMessage("You can't reload that right now.", "info")
+            success = false
+        end
+    elseif ability.effect == "area_attack" then
+        local Game = require('src.Game')
+        -- Attack adjacent squares (left, front, right)
+        local directions = {{-1, 0}, {0, -1}, {1, 0}, {0, 1}, {-1, -1}, {1, -1}, {-1, 1}, {1, 1}} -- All 8 directions
+        for _, dir in ipairs(directions) do
+            local targetEntity = Game.getEntityAt(self.x + dir[1], self.y + dir[2])
+            if targetEntity and not targetEntity.isPlayer then
+                self:_resolveAttack(targetEntity, ability)
+            end
+        end
+        success = true -- The action is always successful, even if no one is hit
     end
 
     -- 4. Finalize if successful

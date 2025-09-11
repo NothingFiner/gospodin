@@ -21,32 +21,38 @@ config.floorData = {
             wall = {0.2, 0.15, 0.12}
         }
     },
-    {name = "Burmestor's Manor: Apartments", generator = "manor",            width = 80, height = 25, transitions = {up = 1, down = 2}, enemies = {"guard", "infected_servant"},
+    {name = "Burmestor's Manor: Apartments", generator = "manor",            width = 60, height = 25, transitions = {up = 1, down = 2}, enemies = {"guard", "infected_servant"},
         colors = {
             floor = require('src.colors').manor_red,
             wall = {0.3, 0.2, 0.15}
         }
     },
-    {name = "Burmestor's Manor: Ground Floor", generator = "manor",            width = 80, height = 25, transitions = {up = 2, down = 1}, enemies = {"guard"}, uniqueSpawns = {"burmestors_daughter"},
+    {name = "Burmestor's Manor: Ground Floor", generator = "manor",            width = 60, height = 25, transitions = {up = 2, down = 1}, enemies = {"guard"}, uniqueSpawns = {"burmestors_daughter"},
         colors = {
             floor = require('src.colors').manor_red,
             wall = {0.4, 0.3, 0.2}
         }
     },
-    {name = "Village Streets",              generator = "village",          width = 100, height = 30, transitions = {up = 1, down = 2}, enemies = {"thug", "watchman"},
+    {name = "Burmestor's Manor: Grounds",   generator = "grounds",          width = 30, height = 30, transitions = {up = 1, down = 1}, enemies = {"guard", "wild_canid"},
+        colors = {
+            floor = require('src.colors').dark_green, -- Dirt/grass path
+            wall = {0.1, 0.4, 0.1} -- Hedges
+        }
+    },
+    {name = "Village Streets",              generator = "village",          width = 100, height = 30, transitions = {up = 1, down = 1}, enemies = {"thug", "watchman"},
         colors = {
             floor = {0.5, 0.5, 0.45}, -- Cobblestone
             wall = {0.4, 0.35, 0.3}, -- Building walls
             town_square = {0.6, 0.6, 0.55}
         }
     },
-    {name = "Dark Sewers",                  generator = "default",          width = 80, height = 25, transitions = {up = 2, down = 1}, enemies = {"rat", "sewer_dweller"},
+    {name = "Dark Sewers",                  generator = "default",          width = 80, height = 25, transitions = {up = 1, down = 1}, enemies = {"rat", "sewer_dweller"},
         colors = {
             floor = {0.3, 0.4, 0.3}, -- Mossy floor
             wall = {0.2, 0.3, 0.2}  -- Damp wall
         }
     },
-    {name = "Alien Lair",                   generator = "default",          width = 80, height = 25, transitions = {up = 1, down = 0}, enemies = {"alien_drone"}, uniqueSpawns = {"alien_patriarch"},
+    {name = "Alien Lair",                   generator = "default",          width = 80, height = 25, transitions = {up = 1, down = 0}, enemies = {"alien_drone", "alien_praetorian"}, uniqueSpawns = {"alien_patriarch"},
         colors = {
             floor = {0.4, 0.3, 0.4}, -- Purple-ish organic floor
             wall = {0.3, 0.2, 0.3}  -- Dark fleshy wall
@@ -168,6 +174,33 @@ config.abilities = {
         charges = 2,
         maxCharges = 2
     },
+    reload_crossbow = {
+        name = "Reload Crossbow",
+        description = "Reload the primitive crossbow.",
+        apCost = 3,
+        cooldown = 0,
+        effect = "reload_ability",
+        targetAbility = "shoot_crossbow"
+    },
+    shoot_crossbow = {
+        name = "Shoot (Crossbow)",
+        description = "Fire a bolt from the crossbow.",
+        apCost = 1,
+        range = 8,
+        cooldown = 0,
+        targeting = "single_enemy",
+        effect = "ranged_attack",
+        damage = {min = 2, max = 5},
+        charges = 1,
+        maxCharges = 1
+    },
+    sweep = {
+        name = "Sweep",
+        description = "Attack all adjacent enemies in a forward arc.",
+        apCost = 3,
+        effect = "area_attack",
+        damage = {min = 3, max = 5}
+    },
     toxic_strike = {
         name = "Toxic Strike",
         description = "Inject a debilitating poison on hit.",
@@ -181,7 +214,7 @@ config.abilities = {
         name = "Shoot (Type 77)",
         description = "Fire a high-energy bolt at a single target.",
         apCost = 3,
-        range = 5,
+        range = 10,
         cooldown = 0,
         targeting = "single_enemy",
         effect = "ranged_attack",
@@ -288,6 +321,57 @@ config.items = {
         },
         abilities = {} -- This weapon uses standard attacks, not special abilities
     },
+    primitive_crossbow = {
+        type = C.ItemType.EQUIPMENT,
+        name = "Primitive Crossbow",
+        char = "}", color = {0.5, 0.4, 0.3},
+        slot = C.EquipmentSlot.WEAPON1,
+        abilities = {"shoot_crossbow", "reload_crossbow"}
+    },
+    guards_halberd = {
+        type = C.ItemType.EQUIPMENT,
+        name = "Guard's Halberd",
+        char = "P", color = {0.8, 0.7, 0.6},
+        slot = C.EquipmentSlot.WEAPON1,
+        modifiers = { damage = {min = 4, max = 8} },
+        abilities = {"sweep"}
+    },
+    cleaver = {
+        type = C.ItemType.EQUIPMENT,
+        name = "Cleaver",
+        char = ")", color = {0.7, 0.7, 0.7},
+        slot = C.EquipmentSlot.WEAPON1,
+        modifiers = { damage = {min = 2, max = 3}, critDamage = 3 }
+    },
+    short_sword = {
+        type = C.ItemType.EQUIPMENT,
+        name = "Short Sword",
+        char = ")", color = {0.8, 0.8, 0.8},
+        slot = C.EquipmentSlot.WEAPON1,
+        modifiers = { damage = {min = 2, max = 6} }
+    },
+    severed_arm = {
+        type = C.ItemType.EQUIPMENT,
+        name = "Severed Arm",
+        char = "(", color = {0.4, 0.6, 0.4},
+        slot = C.EquipmentSlot.WEAPON1,
+        modifiers = { damage = {min = 2, max = 4}, stun_chance = 0.1 } -- stun_chance is a new modifier
+    },
+    alien_claw_dagger = {
+        type = C.ItemType.EQUIPMENT,
+        name = "Alien Claw Dagger",
+        char = "'", color = {0.6, 0.2, 0.8},
+        slot = C.EquipmentSlot.WEAPON1,
+        modifiers = { damage = {min = 2, max = 6}, poison_chance = 0.25 } -- poison_chance is a new modifier
+    },
+    relic_blade = {
+        type = C.ItemType.EQUIPMENT,
+        name = "Relic Blade",
+        char = "|", color = {0.9, 0.9, 0.2},
+        slot = C.EquipmentSlot.WEAPON1,
+        modifiers = { damage = {min = 4, max = 10} }
+    },
+
 
     -- === EQUIPMENT: ARMOR ===
     elegant_blouse = {
@@ -316,6 +400,60 @@ config.items = {
         modifiers = {
             -- No modifiers, just flavor for now
         }
+    },
+
+    -- === EQUIPMENT: ARMOR (New) ===
+    guards_helmet = {
+        type = C.ItemType.EQUIPMENT, name = "Guard's Helmet", char = "^", color = {0.7, 0.7, 0.7},
+        slot = C.EquipmentSlot.HEAD, modifiers = { armor = 2 }
+    },
+    guards_cuirass = {
+        type = C.ItemType.EQUIPMENT, name = "Guard's Cuirass", char = "[", color = {0.7, 0.7, 0.7},
+        slot = C.EquipmentSlot.CHEST, modifiers = { armor = 3 }
+    },
+    guards_braces = {
+        type = C.ItemType.EQUIPMENT, name = "Guard's Braces", char = "[", color = {0.7, 0.7, 0.7},
+        slot = C.EquipmentSlot.HANDS, modifiers = { armor = 2 }
+    },
+    guards_greaves = {
+        type = C.ItemType.EQUIPMENT, name = "Guard's Greaves", char = "[", color = {0.7, 0.7, 0.7},
+        slot = C.EquipmentSlot.LEGS, modifiers = { armor = 2 }
+    },
+    ancient_combat_exoskeleton = {
+        type = C.ItemType.EQUIPMENT, name = "Ancient Combat Exoskeleton", char = "[", color = {0.4, 0.4, 0.5},
+        slot = C.EquipmentSlot.CHEST, modifiers = { actionPoints = 2, damage = {min=3, max=3}, critDamage = 3 }
+    },
+    boots_of_the_venerated_star_people = {
+        type = C.ItemType.EQUIPMENT, name = "Boots of the Venerated Star People", char = "[", color = {0.9, 0.9, 0.2},
+        slot = C.EquipmentSlot.FEET, modifiers = { armor = 2, actionPoints = 1 }
+    },
+    improvised_chitin_breast_plate = {
+        type = C.ItemType.EQUIPMENT, name = "Improvised Chitin Breast Plate", char = "[", color = {0.6, 0.2, 0.8},
+        slot = C.EquipmentSlot.CHEST, modifiers = { armor = 5 }
+    },
+    alien_claw_gauntlet = {
+        type = C.ItemType.EQUIPMENT, name = "Alien Claw Gauntlet", char = "[", color = {0.6, 0.2, 0.8},
+        slot = C.EquipmentSlot.HANDS, modifiers = { armor = 2, damage = {min=1, max=1} }
+    },
+    helmet_of_the_venerated_star_people = {
+        type = C.ItemType.EQUIPMENT, name = "Helmet of the Venerated Star People", char = "^", color = {0.9, 0.9, 0.2},
+        slot = C.EquipmentSlot.HEAD, modifiers = { armor = 2, stun_immunity = true } -- stun_immunity is a new modifier
+    },
+    chestplate_of_the_venerated_star_people = {
+        type = C.ItemType.EQUIPMENT, name = "Chestplate of the Venerated Star People", char = "[", color = {0.9, 0.9, 0.2},
+        slot = C.EquipmentSlot.CHEST, modifiers = { armor = 6 }
+    },
+    gambeson = {
+        type = C.ItemType.EQUIPMENT, name = "Gambeson", char = "[", color = {0.8, 0.7, 0.6},
+        slot = C.EquipmentSlot.CHEST, modifiers = { armor = 2 }
+    },
+    leather_bracers = {
+        type = C.ItemType.EQUIPMENT, name = "Leather Bracers", char = "[", color = {0.5, 0.4, 0.3},
+        slot = C.EquipmentSlot.HANDS, modifiers = { armor = 1 }
+    },
+    assassins_boots = {
+        type = C.ItemType.EQUIPMENT, name = "Assassin's Boots", char = "[", color = {0.2, 0.2, 0.2},
+        slot = C.EquipmentSlot.FEET, modifiers = { armor = 1, critChance = 10 }
     }
 }
 

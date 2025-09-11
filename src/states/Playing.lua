@@ -33,6 +33,7 @@ function PlayingState:new(changeState)
         aiTurnDelay = 0.2, -- Delay in seconds before an AI acts
         aiTurnTimer = 0
     }
+    state.visibilityCanvas = love.graphics.newCanvas(love.graphics.getWidth(), love.graphics.getHeight())
     setmetatable(state, self)
     self.__index = self
     -- These need to be on the object itself, not the temporary 'state' table
@@ -100,91 +101,162 @@ function PlayingState:draw()
 	love.graphics.push()
 	love.graphics.setScissor(mapX, mapY, mapW, mapH)
 
-	-- 1. Draw the world (map and entities)
+	-- 0. Prepare the visibility canvas for the shader
+	love.graphics.setCanvas(self.visibilityCanvas)
+	love.graphics.clear(0,0,0,1) -- Start with black (not visible)
 	if Game.floors[Game.currentFloor] then
-		local map = Game.floors[Game.currentFloor].map
-		local floorInfo = config.floorData[Game.currentFloor]
-		-- Draw map tiles
 		for y = 1, Game.mapHeight do
 			for x = 1, Game.mapWidth do
-				local screenX = mapX + (x - Game.camera.x) * Game.tileSize
-				local screenY = mapY + (y - Game.camera.y) * Game.tileSize
 				local visibility = (Game.fovEnabled and Game.fovMap[y] and Game.fovMap[y][x]) or 1
-				local isVisible = visibility > 0
 				local isExplored = Game.floors[Game.currentFloor].exploredMap[y] and Game.floors[Game.currentFloor].exploredMap[y][x]
+				local finalVisibility = 0
+				if visibility > 0 then finalVisibility = visibility -- Use full visibility if in FOV
+				elseif isExplored then finalVisibility = 0.3 end -- Use dim visibility if explored
+				
+				love.graphics.setColor(finalVisibility, finalVisibility, finalVisibility)
+				love.graphics.rectangle("fill", mapX + (x - Game.camera.x) * Game.tileSize, mapY + (y - Game.camera.y) * Game.tileSize, Game.tileSize, Game.tileSize)
+			end
+		end
+	end
+	love.graphics.setCanvas() -- Return to drawing on the main screen
 
-				-- Safely get floor colors, providing a default if the floor index is invalid.
-				local floorColors = (config.floorData[Game.currentFloor] and config.floorData[Game.currentFloor].colors) or {
-					floor = {0.5, 0.5, 0.5}, -- Default gray floor
-					wall = {0.3, 0.3, 0.3}   -- Default gray wall
-				}
+	-- 1. Draw the world (map and entities)
+	if Game.floors[Game.currentFloor] then
+		-- Existing Tile-Based Rendering Path
+		local map = Game.floors[Game.currentFloor].map
+			local floorInfo = config.floorData[Game.currentFloor]
+			-- Draw map tiles
+			for y = 1, Game.mapHeight do
+				for x = 1, Game.mapWidth do
+					local screenX = mapX + (x - Game.camera.x) * Game.tileSize
+					local screenY = mapY + (y - Game.camera.y) * Game.tileSize
+					local visibility = (Game.fovEnabled and Game.fovMap[y] and Game.fovMap[y][x]) or 1
+					local isVisible = visibility > 0
+					local isExplored = Game.floors[Game.currentFloor].exploredMap[y] and Game.floors[Game.currentFloor].exploredMap[y][x]
+					
+					-- Safely get floor colors, providing a default if the floor index is invalid.
+					local floorColors = (config.floorData[Game.currentFloor] and config.floorData[Game.currentFloor].colors) or {
+						floor = {0.5, 0.5, 0.5}, -- Default gray floor
+						wall = {0.3, 0.3, 0.3}   -- Default gray wall
+					}
 
-				local tileSprite = nil
-				local tileType = type(map[y][x]) == "table" and map[y][x].type or map[y][x]
+					local tileSprite = nil
+					local tileType = type(map[y][x]) == "table" and map[y][x].type or map[y][x]
 
-				if floorInfo.name == "Village Streets" and tileType == 1 then
-					local variant = map[y][x].variant
-					if variant == 1 then tileSprite = Assets.sprites.village_floor
-					elseif variant == 2 then tileSprite = Assets.sprites.village_floor_1
-					elseif variant == 3 then tileSprite = Assets.sprites.village_floor_2
-					elseif variant == 4 then tileSprite = Assets.sprites.village_floor_3
-					end
-				end
-
-				if isVisible then
-					-- Draw visible tiles with full brightness
-					local r, g, b = 0, 0, 0
-					if tileType == 4 then r, g, b = unpack(floorColors.town_square or floorColors.floor)
-					elseif tileType == 0 then r, g, b = unpack(floorColors.wall)
-					else r, g, b = unpack(floorColors.floor) end
-
-					-- Special wall color for manor transitions in the village
-					if floorInfo.name == "Village Streets" and map[y][x] == 0 then
-						-- Check if adjacent tile is stairs to the manor (up)
-						if (map[y+1] and map[y+1][x] == 3) or (map[y-1] and map[y-1][x] == 3) or
-						   (map[y][x+1] == 3) or (map[y][x-1] == 3) then
-							r, g, b = unpack(require('src.colors').dark_khaki)
+					if floorInfo.name == "Village Streets" and tileType == 1 then
+						if type(map[y][x]) == "table" then
+							local variant = map[y][x].variant
+							if variant == 1 then tileSprite = Assets.sprites.village_floor
+							elseif variant == 2 then tileSprite = Assets.sprites.village_floor_1
+							elseif variant == 3 then tileSprite = Assets.sprites.village_floor_2
+							elseif variant == 4 then tileSprite = Assets.sprites.village_floor_3
+							end
+						end
+				elseif floorInfo.name:find("Manor") and tileType == 1 then
+					if type(map[y][x]) == "table" then
+						local variant = map[y][x].variant
+						if variant and Assets.sprites.manor_hardwood_tiles[variant] then
+							tileSprite = Assets.sprites.manor_hardwood_tiles[variant]
+						end
 						end
 					end
 
-					love.graphics.setColor(r * visibility, g * visibility, b * visibility)
-					if tileSprite then love.graphics.draw(tileSprite, screenX, screenY)
-					else love.graphics.rectangle("fill", screenX, screenY, Game.tileSize, Game.tileSize) end
-				elseif isExplored then
-					-- Draw explored but not visible tiles dimly
-					local r, g, b = 0, 0, 0
-					if tileType == 4 then r, g, b = unpack(floorColors.town_square or floorColors.floor)
-					elseif tileType == 0 then r, g, b = unpack(floorColors.wall)
-					else r, g, b = unpack(floorColors.floor) end
-					love.graphics.setColor(r * 0.3, g * 0.3, b * 0.3) -- Dimmed version of the floor's specific color
-					if tileSprite then love.graphics.draw(tileSprite, screenX, screenY)
-					else love.graphics.rectangle("fill", screenX, screenY, Game.tileSize, Game.tileSize) end
-				else
-					-- If not explored, it's just black
-					love.graphics.setColor(0,0,0) -- Undiscovered
-					love.graphics.rectangle("fill", screenX, screenY, Game.tileSize, Game.tileSize)
-				end
+					if isVisible then
+						-- Draw visible tiles with full brightness
+						local r, g, b = 0, 0, 0
+						if tileType == 4 then r, g, b = unpack(floorColors.town_square or floorColors.floor)
+						elseif tileType == 0 then r, g, b = unpack(floorColors.wall)
+						else r, g, b = unpack(floorColors.floor) end
 
-				-- Draw stairs with sprites
-				if (isVisible or isExplored) then
-					local stairSprite = nil
-					if tileType == 2 then -- Down stairs
-						if floorInfo.name:find("Manor") then stairSprite = Assets.sprites.manor_stairs_down
-						elseif floorInfo.name == "Village Streets" then stairSprite = Assets.sprites.village_to_sewers end
-					elseif tileType == 3 then -- Up stairs
-						if floorInfo.name:find("Manor") then stairSprite = Assets.sprites.manor_stairs_up end
+						if tileSprite and floorInfo.name:find("Manor") then
+							love.graphics.setColor(visibility, visibility, visibility)
+							-- For manor floors, we need to draw the atlas with the correct quad
+							love.graphics.draw(Assets.sprites.manor_hardwood_atlas, tileSprite, screenX, screenY)
+						elseif tileSprite then
+							love.graphics.setColor(visibility, visibility, visibility)
+							-- For village floors
+							love.graphics.draw(tileSprite, screenX, screenY)
+						else
+							love.graphics.setColor(r * visibility, g * visibility, b * visibility)
+							love.graphics.rectangle("fill", screenX, screenY, Game.tileSize, Game.tileSize)
+						end
+
+					elseif isExplored then
+						local dimColor = 0.3
+						if tileSprite and floorInfo.name:find("Manor") then
+							love.graphics.setColor(dimColor, dimColor, dimColor)
+							-- For manor floors, we need to draw the atlas with the correct quad
+							love.graphics.draw(hedgeSprite, screenX, screenY)
+						else
+							local r, g, b = 0, 0, 0
+							if tileType == 4 then r, g, b = unpack(floorColors.town_square or floorColors.floor)
+							elseif tileType == 0 then r, g, b = unpack(floorColors.wall)
+							else r, g, b = unpack(floorColors.floor) end
+							love.graphics.setColor(r * dimColor, g * dimColor, b * dimColor)
+							if tileSprite then love.graphics.draw(tileSprite, screenX, screenY)
+							else love.graphics.rectangle("fill", screenX, screenY, Game.tileSize, Game.tileSize) end
+						end
+					else
+						-- If not explored, it's just black
+						love.graphics.setColor(0,0,0) -- Undiscovered
+						love.graphics.rectangle("fill", screenX, screenY, Game.tileSize, Game.tileSize)
 					end
 
-					if stairSprite then
-						love.graphics.setColor(visibility, visibility, visibility)
-						love.graphics.draw(stairSprite, screenX, screenY)
-					elseif tileType == 2 or tileType == 3 then -- Fallback for other stairs
-						local char = (tileType == 2) and ">" or "<"
-						local ox, oy = getCenteredOffsets(char)
-						love.graphics.setColor(visibility, visibility, visibility)
-						love.graphics.print(char, screenX + ox, screenY + oy)
+					-- Draw stairs with sprites
+					if (isVisible or isExplored) then
+						local stairSprite = nil
+						if tileType == 2 then -- Down stairs
+							if floorInfo.name:find("Manor") then stairSprite = Assets.sprites.manor_stairs_down
+							elseif floorInfo.name == "Village Streets" then stairSprite = Assets.sprites.village_to_sewers end
+						elseif tileType == 3 then -- Up stairs
+							if floorInfo.name:find("Manor") then stairSprite = Assets.sprites.manor_stairs_up end
+						end
+
+						if stairSprite then
+							local rotation = (type(map[y][x]) == "table" and map[y][x].rotation) or 0
+							love.graphics.setColor(visibility, visibility, visibility)
+							love.graphics.draw(stairSprite, screenX + 16, screenY + 16, rotation, 1, 1, 16, 16)
+						elseif tileType == 2 or tileType == 3 then -- Fallback for other stairs
+							local char = (tileType == 2) and ">" or "<"
+							local ox, oy = getCenteredOffsets(char)
+							love.graphics.setColor(visibility, visibility, visibility)
+							love.graphics.print(char, screenX + ox, screenY + oy)
+						end
 					end
 				end
+			end
+
+		-- Draw large props (doodads)
+		local largeProps = Game.floors[Game.currentFloor].largeProps or {}
+		for _, prop in ipairs(largeProps) do
+			-- Check if it's a rug/runner
+			local isRug = prop.sprite:find("rug") or prop.sprite:find("runner")
+			local propQuad = isRug and Assets.sprites.rugs[prop.sprite]
+			local propAtlas = isRug and Assets.sprites.rug_atlas
+
+			if propQuad and propAtlas then
+				local screenX, screenY
+				if prop.isPixelCoords then
+					screenX = mapX + (prop.x - Game.camera.x * Game.tileSize)
+					screenY = mapY + (prop.y - Game.camera.y * Game.tileSize)
+				else -- Fallback for any old props that might use tile coords
+					screenX = mapX + (prop.x - Game.camera.x) * Game.tileSize
+					screenY = mapY + (prop.y - Game.camera.y) * Game.tileSize
+				end
+				local rotation = prop.rotation or 0
+				-- To rotate around the center, we need to calculate the origin offset
+				local ox, oy = 0, 0
+				if rotation ~= 0 then
+                        local _, _, quadWidth, quadHeight = propQuad:getViewport()
+						ox, oy = quadWidth / 2, quadHeight / 2
+				end
+
+				-- Use the fog shader to draw the rug
+				love.graphics.setShader(Assets.shaders.fog)
+				Assets.shaders.fog:send("visibilityMap", self.visibilityCanvas)
+				love.graphics.setColor(1, 1, 1) -- Shader handles the tinting
+					love.graphics.draw(propAtlas, propQuad, screenX + ox, screenY + oy, rotation, 1, 1, ox, oy)
+				love.graphics.setShader() -- Reset to default shader
 			end
 		end
 

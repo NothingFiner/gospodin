@@ -211,7 +211,7 @@ function Game.changeFloor(direction)
     -- 2. Check cache or generate a new floor if it's the first visit
     if not Game.floors[Game.currentFloor] then
         local generateFloor = require('src.systems.DungeonGenerator')
-        local map, rooms = generateFloor(Game.currentFloor, Game.mapWidth, Game.mapHeight)
+        local map, rooms, largeProps = generateFloor(Game.currentFloor, Game.mapWidth, Game.mapHeight)
         local newEntities = {}
 
         -- Spawn unique enemies for the floor if they haven't been spawned yet
@@ -265,7 +265,7 @@ function Game.changeFloor(direction)
         end
 
         -- Store the newly generated floor in the cache
-        Game.floors[Game.currentFloor] = { map = map, rooms = rooms, entities = newEntities, exploredMap = newExploredMap }
+        Game.floors[Game.currentFloor] = { map = map, rooms = rooms, entities = newEntities, exploredMap = newExploredMap, largeProps = largeProps or {} }
     end
 
     -- 3. Load the new floor's data from the cache
@@ -276,16 +276,22 @@ function Game.changeFloor(direction)
     -- 4. Determine player's new position
     local newPlayerX, newPlayerY
     if direction == 0 then
-        -- Special case for first-time game initialization: fixed spawn point.
+        -- Special case for first-time game initialization: fixed spawn point in Audience Room.
         newPlayerX = 5
         newPlayerY = 3
     else
         -- Normal level transition: find the corresponding stairs
         local targetStairType = (direction == 1) and 3 or 2
+        -- Special case for leaving the Audience Room (floor 1)
+        if Game.currentFloor == 2 and newFloorIndex == 1 then
+            newPlayerX, newPlayerY = 5, 3 -- Place player back in the Audience Room
+            targetStairType = nil -- Skip stair search
+        end
         local possibleStartPositions = {}
         for y = 1, Game.mapHeight do
             for x = 1, Game.mapWidth do
-                if map[y][x] == targetStairType then
+                local tileType = type(map[y][x]) == "table" and map[y][x].type or map[y][x]
+                if tileType == targetStairType then
                     table.insert(possibleStartPositions, {x = x, y = y})
                 end
             end

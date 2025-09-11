@@ -50,11 +50,14 @@ function Actor:move(dx, dy)
     local destTile = map and map[newY] and map[newY][newX]
 
     if self.isPlayer then -- Check for player identity
-        if destTile == 2 then return Game.changeFloor(1)
-        elseif destTile == 3 then return Game.changeFloor(-1) end
+        local destTileType = type(destTile) == "table" and destTile.type or destTile
+        if destTileType == 2 then return Game.changeFloor(1)
+        elseif destTileType == 3 then return Game.changeFloor(-1) end
     end
 
-    if destTile ~= 1 and destTile ~= 4 then return failMove() end
+    -- A tile is walkable if it's not a wall (0). This allows movement on floors, stairs, etc.
+    local destTileType = type(destTile) == "table" and destTile.type or destTile
+    if destTileType == 0 then return failMove() end
     
     local targetEntity = Game.getEntityAt(newX, newY)
 
