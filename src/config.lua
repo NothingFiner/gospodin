@@ -46,13 +46,13 @@ config.floorData = {
             town_square = {0.6, 0.6, 0.55}
         }
     },
-    {name = "Dark Sewers",                  generator = "default",          width = 80, height = 25, transitions = {up = 1, down = 1}, enemies = {"rat", "sewer_dweller"},
+    {name = "Dark Sewers",                  generator = "sewers",           width = 80, height = 25, transitions = {up = 1, down = 1}, enemies = {"rat", "sewer_dweller"},
         colors = {
             floor = {0.3, 0.4, 0.3}, -- Mossy floor
             wall = {0.2, 0.3, 0.2}  -- Damp wall
         }
     },
-    {name = "Alien Lair",                   generator = "default",          width = 80, height = 25, transitions = {up = 1, down = 0}, enemies = {"alien_drone", "alien_praetorian"}, uniqueSpawns = {"alien_patriarch"},
+    {name = "Alien Lair",                   generator = "alien_lair",       width = 80, height = 25, transitions = {up = 1, down = 0}, enemies = {"alien_drone", "alien_praetorian"}, uniqueSpawns = {"alien_patriarch"},
         colors = {
             floor = {0.4, 0.3, 0.4}, -- Purple-ish organic floor
             wall = {0.3, 0.2, 0.3}  -- Dark fleshy wall

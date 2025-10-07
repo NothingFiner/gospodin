@@ -10,7 +10,8 @@ local Assets = {
     },
     sprites = {},
     music = {},
-    shaders = {}
+    shaders = {},
+    sounds = {}
 }
 
 function Assets.load()
@@ -21,6 +22,12 @@ function Assets.load()
     Assets.fonts.hostGroteskRegular = love.graphics.newFont("assets/fonts/Host_Grotesk/static/HostGrotesk-Regular.ttf", 16)
     -- Load character sprites
     Assets.sprites.player = love.graphics.newImage("assets/sprites/characters/player.png")
+    Assets.sprites.wild_canid = love.graphics.newImage("assets/sprites/characters/wild_canid.png")
+    Assets.sprites.rat = love.graphics.newImage("assets/sprites/characters/rat.png")
+    Assets.sprites.guard = love.graphics.newImage("assets/sprites/characters/guard.png")
+    Assets.sprites.watchman = love.graphics.newImage("assets/sprites/characters/watchman.png")
+
+
 
     -- Load tile sprites
     Assets.sprites.manor_stairs_up = love.graphics.newImage("assets/tiles/manor-stairs-up.png")
@@ -77,12 +84,91 @@ function Assets.load()
         end
     end
 
+    -- Load manor grounds atlas and create individual tile quads
+    local groundsAtlas = love.graphics.newImage("assets/tiles/manor-grounds.png")
+    Assets.sprites.grounds_atlas = groundsAtlas
+    Assets.sprites.grounds_floor_tiles = {}
+    Assets.sprites.grounds_hedge_tiles = {}
+    local grounds_tile_size = 32
+    -- First 12 tiles (row 1 and first 4 of row 2) are floors
+    for i = 0, 11 do
+        local x = (i % 8) * grounds_tile_size
+        local y = math.floor(i / 8) * grounds_tile_size
+        table.insert(Assets.sprites.grounds_floor_tiles, love.graphics.newQuad(x, y, grounds_tile_size, grounds_tile_size, groundsAtlas:getDimensions()))
+    end
+    -- Last 4 tiles of the second row are hedges
+    for i = 0, 3 do
+        table.insert(Assets.sprites.grounds_hedge_tiles, love.graphics.newQuad((4 + i) * grounds_tile_size, grounds_tile_size, grounds_tile_size, grounds_tile_size, groundsAtlas:getDimensions()))
+    end
+
+    -- Load sewers atlas and create individual tile quads
+    local sewersAtlas = love.graphics.newImage("assets/tiles/sewers.png")
+    Assets.sprites.sewers_atlas = sewersAtlas
+    Assets.sprites.sewers_wall_tiles = {}
+    Assets.sprites.sewers_floor_tiles = {}
+    local sewers_tile_size = 32
+    -- First 11 tiles are walls
+    for i = 0, 10 do
+        local x = (i % 7) * sewers_tile_size
+        local y = math.floor(i / 7) * sewers_tile_size
+        table.insert(Assets.sprites.sewers_wall_tiles, love.graphics.newQuad(x, y, sewers_tile_size, sewers_tile_size, sewersAtlas:getDimensions()))
+    end
+    -- The remaining 17 tiles are floors
+    for i = 11, 27 do
+        local x = (i % 7) * sewers_tile_size
+        local y = math.floor(i / 7) * sewers_tile_size
+        table.insert(Assets.sprites.sewers_floor_tiles, love.graphics.newQuad(x, y, sewers_tile_size, sewers_tile_size, sewersAtlas:getDimensions()))
+    end
+
     -- Load music
     Assets.music.theme = love.audio.newSource("assets/music/gospodintheme.wav", "stream")
     Assets.music.theme:setVolume(0.5)
+    Assets.music.village = love.audio.newSource("assets/music/gospodin-village.wav", "stream")
+    Assets.music.village:setVolume(0)
+    Assets.music.village:setLooping(true)
+    Assets.music.sewers = love.audio.newSource("assets/music/gospodin-sewers.wav", "stream")
+    Assets.music.sewers:setVolume(0)
+    Assets.music.sewers:setLooping(true)
+    -- You can add more level-specific tracks here
+    -- Assets.music.manor = love.audio.newSource("assets/music/gospodin-manor.wav", "stream")
 
     -- Load shaders
     Assets.shaders.fog = love.graphics.newShader("assets/shaders/fog.glsl")
+
+    -- Load sound effects
+    Assets.sounds.bark = love.audio.newSource("assets/sounds/bark.wav", "static")
+    Assets.sounds.daughter_attack = love.audio.newSource("assets/sounds/daughter-attack.wav", "static")
+    Assets.sounds.dweller_attack = love.audio.newSource("assets/sounds/dweller-attack.wav", "static")
+    Assets.sounds.patriarch_roar = love.audio.newSource("assets/sounds/patriarch-roar.wav", "static")
+    Assets.sounds.chitter = love.audio.newSource("assets/sounds/chitter.wav", "static")
+    Assets.sounds.masc_attack = love.audio.newSource("assets/sounds/masc-attack.wav", "static")
+    Assets.sounds.masc_death = love.audio.newSource("assets/sounds/masc-death.wav", "static")
+    Assets.sounds.long_death = love.audio.newSource("assets/sounds/long-death.wav", "static")
+    Assets.sounds.creature_death = love.audio.newSource("assets/sounds/creature-death.wav", "static")
+
+    -- Set initial volumes
+    Assets.masterVolume = 0.5
+    Assets.musicVolume = 0.5
+    Assets.sfxVolume = 0.5
+
+    love.audio.setVolume(Assets.masterVolume)
+
+    Assets.setMusicVolume = function(volume)
+        Assets.musicVolume = volume
+        Assets.music.theme:setVolume(Assets.musicVolume * Assets.masterVolume)
+        Assets.music.village:setVolume(Assets.musicVolume * Assets.masterVolume)
+        Assets.music.sewers:setVolume(Assets.musicVolume * Assets.masterVolume)
+    end
+
+    Assets.setMasterVolume = function(volume)
+        Assets.masterVolume = volume
+        love.audio.setVolume(Assets.masterVolume)
+        Assets.setMusicVolume(Assets.musicVolume) -- Update music volume based on master volume
+        -- You might need to adjust individual sound effect volumes here if you want them relative to the master volume
+    end
+
+    Assets.setMusicVolume(Assets.musicVolume)
+
 
 end
 

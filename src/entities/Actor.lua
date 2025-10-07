@@ -2,6 +2,7 @@
 
 local Entity = require('src.entities.Entity')
 local GameLogSystem = require('src.systems.GameLogSystem')
+local EventSystem = require('src.systems.EventSystem') -- This path is correct
 local C = require('src.constants')
 
 local Actor = {}
@@ -49,12 +50,6 @@ function Actor:move(dx, dy)
     local map = Game.floors[Game.currentFloor].map
     local destTile = map and map[newY] and map[newY][newX]
 
-    if self.isPlayer then -- Check for player identity
-        local destTileType = type(destTile) == "table" and destTile.type or destTile
-        if destTileType == 2 then return Game.changeFloor(1)
-        elseif destTileType == 3 then return Game.changeFloor(-1) end
-    end
-
     -- A tile is walkable if it's not a wall (0). This allows movement on floors, stairs, etc.
     local destTileType = type(destTile) == "table" and destTile.type or destTile
     if destTileType == 0 then return failMove() end
@@ -97,6 +92,9 @@ end
 
 function Actor:_resolveAttack(target, ability)
     if not target.dodge then return true end -- Can't attack non-actors
+
+    -- Trigger the onAttack event for the attacker
+    EventSystem.trigger("onAttack", self, target)
 
     if love.math.random(100) <= target.dodge then
         GameLogSystem.logDodge(self, target)
@@ -183,6 +181,9 @@ function Actor:onKill(target)
         GameLogSystem.logDeath(target)
         return
     end
+
+    -- Trigger the onDeath event for the target
+    EventSystem.trigger("onDeath", target)
 
     -- Find the dead entity in the main list and replace it with a corpse
     for i, entity in ipairs(Game.entities) do

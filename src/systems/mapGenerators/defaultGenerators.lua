@@ -2,6 +2,7 @@
 
 local Utils = require('src.systems.mapGenerators.mapGeneratorUtils')
 local ROT = require('libs.rotLove.rot')
+local Assets = require('src.assets')
 local config = require('src.config')
 
 local DefaultGenerators = {}
@@ -31,42 +32,48 @@ function DefaultGenerators.audience_chamber(floorIndex, mapWidth, mapHeight)
     return map, rooms
 end
 
--- Default generator for sewers and alien lair
+-- Generator for the Alien Lair using Cellular Automata
+function DefaultGenerators.alien_lair(floorIndex, mapWidth, mapHeight)
+    local map = Utils.createBlankMap(mapWidth, mapHeight)
+    local cellular = ROT.Map.Cellular(mapWidth, mapHeight)
+    
+    -- Randomize the initial map
+    cellular:randomize(0.5)
+    
+    -- Run the simulation a few times to create cave-like structures
+    for i = 1, 3 do cellular:create() end
+ 
+    -- The create() callback populates the map. The final pass connects any disjointed areas.
+    cellular:create(function(x, y, value) map[y][x] = value == 0 and 1 or 0 end)
+
+    -- Cellular maps don't have "rooms". We'll collect all walkable tiles for spawning.
+    local spawnableTiles = {}
+    for y = 1, mapHeight do
+        for x = 1, mapWidth do
+            if map[y][x] == 1 then -- 1 is a floor tile
+                table.insert(spawnableTiles, {x=x, y=y, width=1, height=1})
+            end
+        end
+    end
+    return map, spawnableTiles
+end
+
+-- The default generator is now a fallback that creates a simple dungeon.
 function DefaultGenerators.default(floorIndex, mapWidth, mapHeight)
     local map = Utils.createBlankMap(mapWidth, mapHeight)
     local dungeon = ROT.Map.Uniform(mapWidth, mapHeight, { timeLimit = 5000 })
-    return DefaultGenerators._generateFromROTMap(dungeon, floorIndex, map, mapWidth, mapHeight)
-end
-
--- Shared logic for processing a rotLove map object
-function DefaultGenerators._generateFromROTMap(dungeon, floorIndex, map, mapWidth, mapHeight)
-    -- 3. Manually carve the map from the generated rooms and corridors.
-    -- This is more robust than the digCallback, ensuring the map data matches the room data.
-    dungeon:create() -- This must be called to generate the internal data.
     
-    -- 4. Get room and corridor data for entity placement and carving.
-    local rooms = {}
-    local dungeonRooms = dungeon:getRooms()
-
-    for i, room in ipairs(dungeonRooms) do
-        local r = {
-            x = room:getLeft() + 1,
-            y = room:getTop() + 1,
-            width = room:getRight() - room:getLeft() + 1,
-            height = room:getBottom() - room:getTop() + 1
-        }
-        table.insert(rooms, r)
-    end
-    
-    -- Carve rooms and corridors
     dungeon:create(function(x, y, value)
-        if value == 0 then map[y+1][x+1] = 1 end
+        if value == 0 then map[y+1][x+1] = 1 else map[y+1][x+1] = 0 end
     end)
 
-    -- Place stairs based on floor configuration
+    local rooms = {}
+    for _, room in ipairs(dungeon:getRooms()) do
+        table.insert(rooms, {x = room:getLeft()+1, y = room:getTop()+1, width = room:getRight()-room:getLeft()+1, height = room:getBottom()-room:getTop()+1})
+    end
+
     local transitions = config.floorData[floorIndex].transitions
     Utils.placeStairs(map, rooms, transitions.up, transitions.down)
-
     return map, rooms
 end
 

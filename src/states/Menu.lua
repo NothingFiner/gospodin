@@ -23,6 +23,9 @@ function MenuState:enter()
         if not Assets.music.theme:isPlaying() then
             Assets.music.theme:setLooping(true)
             love.audio.play(Assets.music.theme)
+            -- Set the theme as the current track in the playing state
+            local playingState = require('src.Game').states.playing
+            if playingState then playingState.currentMusic = Assets.music.theme end
         end
     end
 end

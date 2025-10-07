@@ -1,5 +1,6 @@
 -- /Users/eliotasenothgaspar-finer/Projects/Gospodin/src/entities/EnemyFactory.lua
 
+local Assets = require('src.assets')
 local Actor = require('src.entities.Actor')
 
 local enemyData = {
@@ -12,7 +13,7 @@ local enemyData = {
     },
     guard = {
         name = "Guard",
-        char = "G", color = {0.8, 0.2, 0.2}, health = 25, ap = 3,
+        sprite = "guard", health = 25, ap = 3,
         damage = {min = 3, max = 5}, xpValue = 25,
         description = "A stern guard, sworn to protect the Burmestor.",
         dropTable = { {name = "health_potion", chance = 0.25} }
@@ -41,21 +42,21 @@ local enemyData = {
     },
     wild_canid = {
         name = "Wild Canid",
-        char = "c", color = {0.7, 0.5, 0.3}, health = 15, ap = 4,
+        sprite = "wild_canid", health = 15, ap = 4,
         damage = {min = 2, max = 4}, xpValue = 15,
         description = "A feral dog, hungry and aggressive.",
         dropTable = {}
     },
     watchman = {
         name = "Watchman",
-        char = "W", color = {0.5, 0.5, 0.8}, health = 35, ap = 3,
+        sprite = "watchman", health = 35, ap = 3,
         damage = {min = 4, max = 7}, xpValue = 30,
         description = "A vigilant member of the town watch.",
         dropTable = { {name = "health_potion", chance = 0.2} }
     },
     rat = {
         name = "Rat",
-        char = "r", color = {0.4, 0.2, 0.1}, health = 10, ap = 2,
+        sprite = "rat", health = 10, ap = 2,
         damage = {min = 1, max = 2}, xpValue = 5,
         description = "A large, aggressive sewer rat.",
         dropTable = {}
@@ -102,7 +103,14 @@ local function createEnemy(type, x, y)
     local data = enemyData[type]
     if not data then return nil end
     
-    local enemy = Actor:new(x, y, data.char, data.color, data.name, data.health, data.ap)
+    local enemy
+    if data.sprite and Assets.sprites[data.sprite] then
+        enemy = Actor:new(x, y, nil, nil, data.name, data.health, data.ap)
+        enemy.sprite = Assets.sprites[data.sprite]
+    else
+        enemy = Actor:new(x, y, data.char, data.color, data.name, data.health, data.ap)
+    end
+
     enemy.type = type
     enemy.damage = data.damage
     enemy.xpValue = data.xpValue

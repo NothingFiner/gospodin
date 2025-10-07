@@ -194,6 +194,24 @@ function Player:_removeItemModifiers(item)
     end
 end
 
+function Player:move(dx, dy)
+    local Game = require('src.Game')
+    local newX, newY = self.x + dx, self.y + dy
+
+    -- Player-specific check for floor transitions before calling the generic actor move
+    local map = Game.floors[Game.currentFloor].map
+    local destTile = map and map[newY] and map[newY][newX]
+    if destTile then
+        local destTileType = type(destTile) == "table" and destTile.type or destTile
+        if destTileType == 2 then return Game.changeFloor(1) -- Down
+        elseif destTileType == 3 then return Game.changeFloor(-1) -- Up
+        end
+    end
+
+    -- If not a transition, call the parent's move method
+    return Actor.move(self, dx, dy)
+end
+
 -- Dispatch table for applying perk effects
 local perkEffects = {
     stat = function(player, effect)

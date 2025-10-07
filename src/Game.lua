@@ -154,8 +154,9 @@ function Game.computeFov()
         if x < 1 or y < 1 or x > Game.mapWidth or y > Game.mapHeight then
             return false
         end
+        local tile = Game.floors[Game.currentFloor].map[y][x]
         -- A tile is passable for FOV if it's not a wall (value is not 0)
-        return Game.floors[Game.currentFloor].map[y][x] ~= 0
+        return (type(tile) == "table" and tile.type ~= 0) or (type(tile) == "number" and tile ~= 0)
     end
 
     -- Use rotLove's Precise Shadowcasting algorithm
@@ -332,6 +333,14 @@ function Game.changeFloor(direction)
     Game.computeFov()
     Game.updateCamera()
     GameLogSystem.logEnterFloor(floorInfo.name)
+
+    -- Trigger music crossfade
+    local musicKey = nil
+    if floorInfo.generator == "village" then musicKey = "village"
+    elseif floorInfo.generator == "sewers" then musicKey = "sewers"
+    end
+    Game.states.playing:startMusicCrossfade(musicKey)
+
     return true -- Indicate success
 end
 
@@ -349,6 +358,9 @@ function Game.initialize(loadout)
     local ItemFactory = require('src.entities.Item')
     local Player = require('src.entities.Player')
     Game.entities = {}
+    -- Initialize systems that listen to events
+    require('src.systems.SoundSystem').initialize()
+
     Game.currentFloor = 1
     Game.turnQueue = {}
     Game.uniqueEnemiesSpawned = {}

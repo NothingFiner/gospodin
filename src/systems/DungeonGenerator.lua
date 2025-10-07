@@ -7,7 +7,9 @@ local generators = {
     manor = require('src.systems.mapGenerators.manorGenerator'),
     village = require('src.systems.mapGenerators.villageGenerator'),
     grounds = require('src.systems.mapGenerators.groundsGenerator'),
+    sewers = require('src.systems.mapGenerators.sewerGenerator'),
     audience_chamber = require('src.systems.mapGenerators.defaultGenerators'),
+    alien_lair = require('src.systems.mapGenerators.defaultGenerators'),
     default = require('src.systems.mapGenerators.defaultGenerators')
 }
 
@@ -17,7 +19,7 @@ local function generateFloor(floorIndex, mapWidth, mapHeight)
     local generatorModule = generators[floorInfo.generator] or generators.default
     
     local generatorFunc
-    if floorInfo.generator == "manor" or floorInfo.generator == "village" or floorInfo.generator == "grounds" then
+    if floorInfo.generator == "manor" or floorInfo.generator == "village" or floorInfo.generator == "grounds" or floorInfo.generator == "sewers" then
         generatorFunc = generatorModule.generate
     else -- For defaultGenerators which contains multiple functions
         generatorFunc = generatorModule[floorInfo.generator] or generatorModule.default
