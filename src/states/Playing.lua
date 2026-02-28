@@ -15,9 +15,6 @@ function PlayingState:new(changeState)
     local state = {
         changeState = changeState,
         activeSubState = "gameplay", -- "gameplay", "pause", "options"
-        -- Music crossfading properties
-        currentMusic = nil,
-        nextMusic = nil
     }
     -- Initialize sub-state objects
     state.gameplay = Gameplay:new()
@@ -26,10 +23,11 @@ function PlayingState:new(changeState)
 
     state.visibilityCanvas = love.graphics.newCanvas(love.graphics.getWidth(), love.graphics.getHeight())
     setmetatable(state, self)
+    -- Music crossfading properties
+    state.currentMusic = nil
+    state.nextMusic = nil
     self.__index = self
-
-    self.pauseMenuOptions = {"Resume", "Options", "Fast Restart", "Main Menu", "Quit"}
-   return state
+    return state
 end
 
 function PlayingState:startMusicCrossfade(newMusicKey)
@@ -46,21 +44,17 @@ function PlayingState:draw()
      -- Define layout regions
     local screenW, screenH = love.graphics.getWidth(), love.graphics.getHeight()
     local statsPanelW = screenW * 0.3
-    local commandPanelH = screenH * 0.05
-    local mapX, mapY = statsPanelW, 0
-    local mapW, mapH = screenW - statsPanelW, screenH - commandPanelH
-    -- Store these on Game for other systems to access
-    Game.mapX = mapX
-    Game.mapY = mapY
+    local commandPanelH = screenH * 0.05 -- This is used in GameUI.draw, so keep it consistent
+    Game.mapX, Game.mapY, Game.mapW, Game.mapH = statsPanelW, 0, screenW - statsPanelW, screenH - commandPanelH
 
     -- Draw the main gameplay screen first, always
-    Gameplay:draw(self, mapX, mapY, mapW, mapH)
+    self.gameplay:draw(self) -- Pass playingState to gameplay draw
 
     -- Then, draw any overlay states on top
     if self.activeSubState == "pause" then
         self.pause:draw()
     elseif self.activeSubState == "options" then
-        Options:draw(self)
+        self.options:draw(self) -- Pass playingState for context (e.g., activeSubState change)
     end
 
     -- Draw the main UI over everything
@@ -70,7 +64,7 @@ end
 function PlayingState:update(dt)
     -- Only update gameplay logic if not paused or in options
     if self.activeSubState == "gameplay" then
-        Gameplay:update(self, dt)
+        self.gameplay:update(self, dt) -- Pass playingState to gameplay update
     end
 
     -- Handle music crossfading
@@ -110,17 +104,18 @@ function PlayingState:keypressed(key)
         elseif self.gameplay.targetingMode then
             self.gameplay.targetingMode = false
         else
-            self.activeSubState = "pause"
+            self.pause.selectedOption = 1 -- Reset selected option when opening pause menu
+            self.activeSubState = "pause" -- Open pause menu
         end
         return
     end
 
     if self.activeSubState == "gameplay" then
-        Gameplay:keypressed(self, key)
+        self.gameplay:keypressed(self, key)
     elseif self.activeSubState == "pause" then
         self.pause:keypressed(self, key)
     elseif self.activeSubState == "options" then
-        Options:keypressed(self, key)
+        self.options:keypressed(self, key)
     end
 end
 

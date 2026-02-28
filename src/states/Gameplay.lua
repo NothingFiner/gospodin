@@ -33,16 +33,16 @@ function Gameplay:new()
     return gameplay
 end
 
-function Gameplay:startTargeting(playingState, isForAbility)
-    playingState.targetingMode = true
-    playingState.isUsingAbility = isForAbility or false
-    playingState.cursor.x = Game.player.x
-    playingState.cursor.y = Game.player.y
+function Gameplay:startTargeting(gameplayState, isForAbility)
+    gameplayState.targetingMode = true
+    gameplayState.isUsingAbility = isForAbility or false
+    gameplayState.cursor.x = Game.player.x
+    gameplayState.cursor.y = Game.player.y
 end
 
-function Gameplay:startInventory(playingState)
-    playingState.inventoryMode = true
-    playingState.selectedItemIndex = 1
+function Gameplay:startInventory(gameplayState)
+    gameplayState.inventoryMode = true
+    gameplayState.selectedItemIndex = 1
 end
 
 function Gameplay:processAITurns(playingState)
@@ -67,194 +67,22 @@ function Gameplay:draw(playingState, mapX, mapY, mapW, mapH)
     MapRenderer.draw(playingState, mapX, mapY)
 
     -- Draw targeting cursor and line
-    if playingState.targetingMode then
-        GameUI.drawTargeting(playingState, mapX, mapY)
+    if playingState.gameplay.targetingMode then
+        GameUI.drawTargeting(playingState.gameplay, mapX, mapY)
     end
 
     -- Draw multi-target numbers if active
-    if playingState.multiTargetData and #playingState.multiTargetData.targets > 0 then
-        GameUI.drawMultiTarget(playingState, mapX, mapY)
+    if playingState.gameplay.multiTargetData and #playingState.gameplay.multiTargetData.targets > 0 then
+        GameUI.drawMultiTarget(playingState.gameplay, mapX, mapY)
     end
 
     -- Draw inventory screen if active
-    if playingState.inventoryMode then
+    if playingState.gameplay.inventoryMode then
         GameUI.drawInventory(playingState)
     end
 
     love.graphics.setScissor()
     love.graphics.pop()
-end
-
-function Gameplay:keypressed(playingState, key)
-    local tookAction = false
-    local gameplay = playingState.gameplay
-
-    if gameplay.targetingMode then
-        -- Targeting mode input
-        local newCursorX, newCursorY = gameplay.cursor.x, gameplay.cursor.y
-        if key == 'w' then newCursorY = newCursorY - 1
-        elseif key == 's' then newCursorY = newCursorY + 1
-        elseif key == 'a' then newCursorX = newCursorX - 1
-        elseif key == 'd' then newCursorX = newCursorX + 1
-        end
-
-        if newCursorX ~= gameplay.cursor.x or newCursorY ~= gameplay.cursor.y then
-            if gameplay.isUsingAbility then
-                local ability = Game.player.abilities[Game.player.selectedAbilityIndex]
-                local dist = math.sqrt((newCursorX - Game.player.x)^2 + (newCursorY - Game.player.y)^2)
-                if dist <= ability.range then
-                    gameplay.cursor.x = newCursorX
-                    gameplay.cursor.y = newCursorY
-                end
-            else
-                gameplay.cursor.x = newCursorX
-                gameplay.cursor.y = newCursorY
-            end
-        elseif key == 'return' or (gameplay.isUsingAbility and key == 'f') then
-            if gameplay.isUsingAbility then
-                local ability = Game.player.abilities[Game.player.selectedAbilityIndex]
-                if gameplay.multiTargetData then
-                    self:selectMultiTarget(playingState)
-                    return -- Don't end turn yet
-                end
-
-                if ability.targeting == "single_enemy" or ability.targeting == "multi_enemy" then
-                    local targetEntity = Game.getEntityAt(gameplay.cursor.x, gameplay.cursor.y)
-                    if targetEntity and not targetEntity.isPlayer then
-                        if ability.targeting == "multi_enemy" then
-                            gameplay.multiTargetData = { targets = {}, maxTargets = ability.maxTargets }
-                            self:selectMultiTarget(playingState)
-                            return -- Don't end turn yet, still selecting targets
-                        end
-                        tookAction = Game.player:useAbility(ability, targetEntity)
-                    else
-                        GameLogSystem.logInvalidTarget()
-                    end
-                elseif ability.targeting == "empty_tile" then
-                    tookAction = Game.player:useAbility(ability, {x = gameplay.cursor.x, y = gameplay.cursor.y})
-                else
-                    GameLogSystem.logInvalidTarget()
-                end
-            end
-
-            if tookAction then
-                gameplay.targetingMode = false
-                gameplay.isUsingAbility = false
-            end
-        end
-    elseif gameplay.inventoryMode then
-        if key == 'tab' then
-            gameplay.inventoryTab = (gameplay.inventoryTab == "inventory") and "equipment" or "inventory"
-            gameplay.selectedItemIndex = 1 -- Reset selection when tabbing
-        elseif key == 'w' then
-            gameplay.selectedItemIndex = math.max(1, gameplay.selectedItemIndex - 1)
-        elseif key == 's' then
-            local maxItems = (gameplay.inventoryTab == "inventory") and #Game.player.inventory or #GameUI.slotOrder
-            gameplay.selectedItemIndex = math.min(maxItems, gameplay.selectedItemIndex + 1)
-        elseif key == 'return' then -- Use/Equip/Unequip
-            if gameplay.inventoryTab == "inventory" then
-                local item = Game.player.inventory[gameplay.selectedItemIndex]
-                if item and Game.player:useItem(item) then
-                    table.remove(Game.player.inventory, gameplay.selectedItemIndex)
-                    tookAction = true
-                else
-                    GameLogSystem.logCannotUseItem()
-                end
-            elseif gameplay.inventoryTab == "equipment" then
-                local slot = GameUI.slotOrder[gameplay.selectedItemIndex]
-                if Game.player.equipment[slot] then
-                    Game.player:unequip(slot)
-                    tookAction = true
-                end
-            end
-
-            if tookAction then
-                gameplay.inventoryMode = false -- Close inventory on action
-            end
-        end
-    elseif gameplay.debugConsoleMode then
-        -- Debug console logic remains here
-    else
-        -- Normal gameplay input
-        local currentEntity = Game.getCurrentEntity()
-        if not (currentEntity and currentEntity.isPlayer) then return end
-
-        if key == 'l' then
-            self:startTargeting(gameplay, false)
-        elseif key == 'g' then
-            -- Item pickup logic
-        elseif key == 'i' then
-            self:startInventory(gameplay)
-        elseif key == 'q' then
-            Game.player:switchActiveWeapon()
-        elseif key == '`' then
-            gameplay.debugConsoleMode = not gameplay.debugConsoleMode
-        elseif key == 'k' then
-            gameplay.showKeymap = true
-        elseif key == 'f' then -- Use selected ability
-            local ability = Game.player.abilities[Game.player.selectedAbilityIndex]
-            if ability and ability.targeting then
-                self:startTargeting(gameplay, true) -- Start targeting for an ability
-            end
-        elseif key == 'v' then -- Cycle abilities
-            Game.player:cycleAbility()
-        else
-            -- Movement and Wait actions
-            if currentEntity.actionPoints > 0 then
-                if key == "up" then MessageLog.scroll(-1); return end
-                if key == "down" then MessageLog.scroll(1); return end
-
-                if key == "w" then tookAction = Game.player:move(0, -1)
-                elseif key == "s" then tookAction = Game.player:move(0, 1)
-                elseif key == "a" then tookAction = Game.player:move(-1, 0)
-                elseif key == "d" then tookAction = Game.player:move(1, 0)
-                elseif key == "space" then
-                    GameLogSystem.logMessage("You wait.", "info")
-                    Game.player.actionPoints = 0
-                    tookAction = true
-                end
-            end
-        end
-    end
-
-    if tookAction then
-        self:checkEndOfPlayerTurn(playingState)
-    end
-end
-
-function Gameplay:checkEndOfPlayerTurn(playingState)
-    Game.updateCamera()
-    StatusEffectSystem.processTurn(Game.player)
-    if Game.player.health <= 0 then playingState.changeState(config.GameState.GAME_OVER); return end
-
-    Game.computeFov()
-
-    if Game.player.actionPoints <= 0 then
-        Game.nextTurn()
-        self:processAITurns(playingState)
-    end
-end
-
-function Gameplay:selectMultiTarget(playingState)
-    local gameplay = playingState.gameplay
-    local targetEntity = Game.getEntityAt(gameplay.cursor.x, gameplay.cursor.y)
-
-    if targetEntity and not targetEntity.isPlayer then
-        table.insert(gameplay.multiTargetData.targets, targetEntity)
-        GameLogSystem.logMultiTargetSelect(gameplay.multiTargetData.maxTargets - #gameplay.multiTargetData.targets)
-    else
-        GameLogSystem.logInvalidTarget()
-        return
-    end
-
-    if #gameplay.multiTargetData.targets >= gameplay.multiTargetData.maxTargets then
-        local ability = Game.player.abilities[Game.player.selectedAbilityIndex]
-        Game.player:useAbility(ability, gameplay.multiTargetData.targets)
-        gameplay.targetingMode = false
-        gameplay.isUsingAbility = false
-        gameplay.multiTargetData = nil
-        self:checkEndOfPlayerTurn(playingState)
-    end
 end
 
 function GameUI.drawTargeting(playingState, mapX, mapY)
@@ -281,19 +109,19 @@ function GameUI.drawTargeting(playingState, mapX, mapY)
         love.graphics.setLineWidth(1)
         local playerScreenX = mapX + (Game.player.x - Game.camera.x) * Game.tileSize + Game.tileSize / 2
         local playerScreenY = mapY + (Game.player.y - Game.camera.y) * Game.tileSize + Game.tileSize / 2
-        local cursorScreenX = mapX + (playingState.cursor.x - Game.camera.x) * Game.tileSize + Game.tileSize / 2
-        local cursorScreenY = mapY + (playingState.cursor.y - Game.camera.y) * Game.tileSize + Game.tileSize / 2
+        local cursorScreenX = mapX + (gameplayState.cursor.x - Game.camera.x) * Game.tileSize + Game.tileSize / 2
+        local cursorScreenY = mapY + (gameplayState.cursor.y - Game.camera.y) * Game.tileSize + Game.tileSize / 2
         love.graphics.line(playerScreenX, playerScreenY, cursorScreenX, cursorScreenY)
         -- Draw cursor box
-        local screenX = mapX + (playingState.cursor.x - Game.camera.x) * Game.tileSize
-        local screenY = mapY + (playingState.cursor.y - Game.camera.y) * Game.tileSize
+        local screenX = mapX + (gameplayState.cursor.x - Game.camera.x) * Game.tileSize
+        local screenY = mapY + (gameplayState.cursor.y - Game.camera.y) * Game.tileSize
         love.graphics.setColor(cursorColor)
         love.graphics.setLineWidth(2)
         love.graphics.rectangle("line", screenX, screenY, Game.tileSize, Game.tileSize)
 end
 
-function GameUI.drawMultiTarget(playingState, mapX, mapY)
-    for i, entity in ipairs(playingState.multiTargetData.targets) do
+function GameUI.drawMultiTarget(gameplayState, mapX, mapY)
+    for i, entity in ipairs(gameplayState.multiTargetData.targets) do
         local screenX = mapX + (entity.x - Game.camera.x) * Game.tileSize
         local screenY = mapY + (entity.y - Game.camera.y) * Game.tileSize
         love.graphics.setColor(1, 1, 0)
@@ -306,11 +134,11 @@ end
 function Gameplay:update(playingState, dt)
     -- Process AI turns if it's not the player's turn
     local currentEntity = Game.getCurrentEntity()
-    if currentEntity and not currentEntity.isPlayer and playingState.activeSubState == "gameplay" then
-        playingState.aiTurnTimer = playingState.aiTurnTimer - dt
-        if playingState.aiTurnTimer <= 0 then
-            self:processSingleAITurn(playingState)
-            playingState.aiTurnTimer = playingState.aiTurnDelay -- Reset timer for the next AI
+    if currentEntity and not currentEntity.isPlayer and not playingState.isPaused then
+        self.aiTurnTimer = self.aiTurnTimer - dt
+        if self.aiTurnTimer <= 0 then
+            self:processSingleAITurn(playingState) -- Pass playingState for changeState
+            self.aiTurnTimer = self.aiTurnDelay -- Reset timer for the next AI
         end
     end
 

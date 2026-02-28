@@ -80,15 +80,20 @@ function GameUI.draw(playingState)
         end
     end
 
+    -- Draw debug console overlay if active
+    if playingState.gameplay and playingState.gameplay.debugConsoleMode then -- Correctly pass the gameplay object
+        GameUI.drawDebugConsole(playingState.gameplay)
+    end
+
     -- Draw bottom panel content (Ability Bar)
     local abilityBarX = mapX + padding
     local abilityBarY = mapH + padding / 2
     local abilityBarW = mapW - padding * 2
 
     love.graphics.setColor(0.7, 0.7, 0.7)
-    love.graphics.printf("(I)nventory | (K)eymap", abilityBarX, abilityBarY, abilityBarW, "left")
+    love.graphics.printf("(I)nventory | (K)eymap | (`) Debug", abilityBarX, abilityBarY, abilityBarW, "left")
 
-    if playingState.targetingMode then
+    if playingState.gameplay and playingState.gameplay.targetingMode then
         -- Targeting mode info
         local ability = Game.player.abilities[Game.player.selectedAbilityIndex]
         local prompt = "Select target. (F) or (ENTER) to use, (ESC) to cancel."
@@ -117,7 +122,7 @@ function GameUI.draw(playingState)
     end
 end
 
-function GameUI.drawInventory(playingState)
+function GameUI.drawInventory(gameplayState)
     local screenW, screenH = love.graphics.getWidth(), love.graphics.getHeight()
     local panelW, panelH = screenW * 0.6, screenH * 0.7
     local panelX, panelY = (screenW - panelW) / 2, (screenH - panelH) / 2
@@ -132,12 +137,12 @@ function GameUI.drawInventory(playingState)
     -- Draw tabs
     local tabW = panelW / 2
     -- Inventory Tab
-    love.graphics.setColor(playingState.inventoryTab == "inventory" and {0.3, 0.3, 0.4} or {0.1, 0.1, 0.15})
+    love.graphics.setColor(gameplayState.inventoryTab == "inventory" and {0.3, 0.3, 0.4} or {0.1, 0.1, 0.15})
     love.graphics.rectangle("fill", panelX, panelY, tabW, 40)
     love.graphics.setColor(1,1,1)
     love.graphics.printf("Inventory", panelX, panelY + 10, tabW, "center")
     -- Equipment Tab
-    love.graphics.setColor(playingState.inventoryTab == "equipment" and {0.3, 0.3, 0.4} or {0.1, 0.1, 0.15})
+    love.graphics.setColor(gameplayState.inventoryTab == "equipment" and {0.3, 0.3, 0.4} or {0.1, 0.1, 0.15})
     love.graphics.rectangle("fill", panelX + tabW, panelY, tabW, 40)
     love.graphics.setColor(1,1,1)
     love.graphics.printf("Equipment", panelX + tabW, panelY + 10, tabW, "center")
@@ -147,13 +152,13 @@ function GameUI.drawInventory(playingState)
     local listW = panelW - 40
     local selectedItem = nil
 
-    if playingState.inventoryTab == "inventory" then
+    if gameplayState.inventoryTab == "inventory" then
         if #Game.player.inventory == 0 then
             love.graphics.printf("Your inventory is empty.", listX, listY, listW, "left")
         else
             for i, item in ipairs(Game.player.inventory) do
                 local text = string.format("%s", item.name)
-                if i == playingState.selectedItemIndex then
+                if i == gameplayState.selectedItemIndex then
                     love.graphics.setColor(1, 1, 0)
                     love.graphics.printf("> " .. text, listX, listY, listW, "left")
                     selectedItem = item
@@ -169,7 +174,7 @@ function GameUI.drawInventory(playingState)
         for i, slot in ipairs(GameUI.slotOrder) do
             local item = Game.player.equipment[slot]
             local text = string.format("%s: %s", slot, item and item.name or "empty")
-            if i == playingState.selectedItemIndex then
+            if i == gameplayState.selectedItemIndex then
                 love.graphics.setColor(1, 1, 0)
                 love.graphics.printf("> " .. text, listX, listY, listW, "left")
                 selectedItem = item
@@ -203,7 +208,7 @@ function GameUI.drawInventory(playingState)
 
         -- Comparison logic
         local equippedItem = Game.player.equipment[selectedItem.slot]
-        if playingState.inventoryTab == "inventory" and equippedItem then
+        if gameplayState.inventoryTab == "inventory" and equippedItem then
             statsY = statsY + 30
             love.graphics.setColor(0.8, 0.8, 0.8)
             love.graphics.printf("--- Equipped: " .. equippedItem.name .. " ---", statsX, statsY, statsW, "left")
@@ -268,8 +273,8 @@ function GameUI.drawPauseMenu(playingState)
     -- Draw menu options
     love.graphics.setFont(require('src.assets').fonts.astlochMenuFont)
     local menuYStart = 300
-    for i, option in ipairs(playingState.pauseMenuOptions) do
-        local color = (i == playingState.selectedPauseOption) and {1, 1, 0} or {0.7, 0.7, 0.7}
+    for i, option in ipairs(playingState.pause.options) do
+        local color = (i == playingState.pause.selectedOption) and {1, 1, 0} or {0.7, 0.7, 0.7}
         love.graphics.setColor(color)
         love.graphics.printf(option, 0, menuYStart + (i - 1) * 50, screenW, "center")
     end
@@ -278,7 +283,7 @@ function GameUI.drawPauseMenu(playingState)
     love.graphics.setFont(require('src.assets').fonts.hostGroteskRegular)
 end
 
-function GameUI.drawDebugConsole(playingState)
+function GameUI.drawDebugConsole(gameplayState)
     local screenW, screenH = love.graphics.getWidth(), love.graphics.getHeight()
     local panelW, panelH = screenW * 0.3, screenH * 0.4
     local panelX, panelY = (screenW - panelW) / 2, (screenH - panelH) / 2
@@ -300,17 +305,17 @@ function GameUI.drawDebugConsole(playingState)
     local listW = panelW - 40
     local options
 
-    if playingState.debugSubMenu then
+    if gameplayState.debugSubMenu then
         love.graphics.printf("Select Floor:", listX, listY, listW, "left")
         listY = listY + 20
-        options = playingState.debugSubMenu.options
+        options = gameplayState.debugSubMenu.options
     else
         options = {"Add 100 XP", "Warp to Floor", "Toggle FOV"}
     end
 
     for i, option in ipairs(options) do
         local text = type(option) == "table" and option.name or option
-        local color = (i == playingState.selectedDebugOption) and {1, 1, 0} or {0.7, 0.7, 0.7}
+        local color = (i == gameplayState.selectedDebugOption) and {1, 1, 0} or {0.7, 0.7, 0.7}
         love.graphics.setColor(color)
         love.graphics.printf(text, listX, listY + (i-1) * 30, listW, "left")
     end

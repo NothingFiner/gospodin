@@ -13,11 +13,13 @@ function Options:new()
             {name = "Back"}
         }
     }
+    setmetatable(options, self)
+    self.__index = self
     return options
 end
 
 function Options:keypressed(playingState, key)
-    local optionsMenu = playingState.options
+    local optionsMenu = self -- This is the Options instance
     if key == 'w' or key == 'up' then
         optionsMenu.selectedOption = math.max(1, optionsMenu.selectedOption - 1)
     elseif key == 's' or key == 'down' then
@@ -42,7 +44,7 @@ function Options:keypressed(playingState, key)
     end
 end
 
-function Options:draw(playingState)
+function Options:draw(playingState) -- playingState is needed for context, but self is the options object itself
     local screenW, screenH = love.graphics.getWidth(), love.graphics.getHeight()
     local panelW, panelH = screenW * 0.5, screenH * 0.7
     local panelX, panelY = (screenW - panelW) / 2, (screenH - panelH) / 2
@@ -58,8 +60,8 @@ function Options:draw(playingState)
     love.graphics.setColor(1, 1, 1)
     love.graphics.printf("---Options---", panelX, panelY + 20, panelW, "center")
 
-    love.graphics.setFont(Assets.fonts.hostGroteskRegular)
-    local optionsMenu = playingState.options
+    love.graphics.setFont(Assets.fonts.hostGroteskRegular) -- Use self for options data
+    local optionsMenu = self -- This is the Options instance
     local sliderLength = panelW * 0.5
     local sliderStartX = panelX + panelW * 0.4
 
@@ -67,7 +69,7 @@ function Options:draw(playingState)
         local color = (i == optionsMenu.selectedOption) and {1, 1, 0} or {0.7, 0.7, 0.7}
         love.graphics.setColor(color)
         local itemY = panelY + 80 + (i - 1) * 50
-        love.graphics.printf(option.name, panelX + 20, itemY, panelW - 40, "left")
+        love.graphics.printf(option.name, panelX + 20, itemY, panelW * 0.4 - 20, "left") -- Adjust width for slider text
 
         if option.type == "slider" then
             local value = option.getValue()

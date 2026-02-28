@@ -346,8 +346,8 @@ function ManorGenerator.generate(floorIndex, mapWidth, mapHeight)
                 totalRugLength = totalRugLength + length
             end
 
-            local spacing = (rugBudget%totalRugLength) / (#rugsToPlace)
-            local currentPos = spacing + Game.tileSize -- Start with the first gap, plus the 1-tile border
+            local spacing = (rugBudget - totalRugLength) / (#rugsToPlace + 1)
+            local currentPos = spacing
 
             for _, rug in ipairs(rugsToPlace) do
 
@@ -358,24 +358,27 @@ function ManorGenerator.generate(floorIndex, mapWidth, mapHeight)
                     rugW, rugH = rugH, rugW
                 end
 
+                -- Determine how much space this rug takes along the long axis
+                local advanceDistance = isWider and rugH or rugW
+
                 local x, y
                 if isWider then
                     -- Place along horizontal center
                     local isRunner = (rug.sprite == "runner_1" or rug.sprite == "runner_2")
-                    -- For a rotated runner, its effective height is its original width.
                     local effectiveRugH = (isRunner) and rug.w or rugH
+                    local effectiveHeight = (rug.baseRotation ~= 0) and rug.w or rug.h
 
                     x = (room.x * Game.tileSize) + currentPos
-                    y = (room.y * Game.tileSize) + ((room.height * Game.tileSize) - effectiveRugH) / 2 + love.math.random(-4, 4)
+                    y = (room.y * Game.tileSize) + ((room.height * Game.tileSize) - effectiveHeight) / 2 + love.math.random(-4, 4)
                 else
                     -- Place along vertical center
-                    x = (room.x * Game.tileSize) + ((room.width * Game.tileSize) - rugW) / 2 + love.math.random(-4, 4)
+                   local effectiveWidth = (rug.baseRotation ~= 0) and rug.h or rug.w
+                    x = (room.x * Game.tileSize) + ((room.width * Game.tileSize) - effectiveWidth) / 2 + love.math.random(-4, 4)
                     y = (room.y * Game.tileSize) + currentPos
                 end
 
-                -- Convert final pixel coordinates back to tile coordinates for storage
                 table.insert(largeProps, {x = x, y = y, sprite = rug.sprite, rotation = finalRotation, isPixelCoords = true})
-                currentPos = currentPos + (isWider and rugH or rugW) + spacing
+                currentPos = currentPos + advanceDistance + spacing
             end
         end
 
